@@ -106,6 +106,10 @@ enum
     // Public keys in segregated witness scripts must be compressed
     //
     SCRIPT_VERIFY_WITNESS_PUBKEYTYPE = (1U << 15),
+
+    // Support CHECKWORKSCORE (sidechain) scripts
+    //
+    SCRIPT_VERIFY_CHECKWORKSCORE = (1U << 16),
 };
 
 bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
@@ -141,6 +145,11 @@ public:
     virtual bool CheckSequence(const CScriptNum& nSequence) const
     {
          return false;
+    }
+
+    virtual bool CheckWorkScore(const CScriptNum& nSidechain) const
+    {
+        return false;
     }
 
     virtual ~BaseSignatureChecker() {}

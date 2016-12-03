@@ -72,7 +72,7 @@ const map<unsigned char, string> mapSigHashTypes =
  *                                     of a signature. Only pass true for scripts you believe could contain signatures. For example,
  *                                     pass false, or omit the this argument (defaults to false), for scriptPubKeys.
  */
-string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDecode)
+string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDecode, const bool scopDecode)
 {
     string str;
     opcodetype opcode;
@@ -110,7 +110,10 @@ string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDecode)
                 }
             }
         } else {
-            str += GetOpName(opcode);
+            if (scopDecode)
+                str += GetSCOPName(opcode);
+            else
+                str += GetOpName(opcode);
         }
     }
     return str;

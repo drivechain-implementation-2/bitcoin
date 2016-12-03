@@ -51,6 +51,10 @@ const char* ScriptErrorString(const ScriptError serror)
             return "Negative locktime";
         case SCRIPT_ERR_UNSATISFIED_LOCKTIME:
             return "Locktime requirement not satisfied";
+        case SCRIPT_ERR_INVALID_SIDECHAIN:
+            return "Invalid sidechain workscore will not be verified";
+        case SCRIPT_ERR_UNSATISFIED_WORKSCORE:
+            return "Workscore requirement (minWorkScore) not satisfied";
         case SCRIPT_ERR_SIG_HASHTYPE:
             return "Signature hash type missing or not understood";
         case SCRIPT_ERR_SIG_DER:

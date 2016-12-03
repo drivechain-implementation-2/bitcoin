@@ -19,10 +19,12 @@
 #include "pow.h"
 #include "primitives/transaction.h"
 #include "script/standard.h"
+#include "sidechaindb.h"
 #include "timedata.h"
 #include "txmempool.h"
 #include "util.h"
 #include "utilmoneystr.h"
+#include "utilstrencodings.h"
 #include "validationinterface.h"
 
 #include <algorithm>
@@ -176,7 +178,26 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vin[0].prevout.SetNull();
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
+
+    // Track sidechain state tx fees
+    CAmount nSideFees = 0;
+
+    // Add WT^(s) which have been validated
+    for (const Sidechain& s : ValidSidechains) {
+        CTransaction wtx = GetSidechainWTJoin(s.nSidechain);
+        if (wtx.vout.size() && wtx.vin.size())
+            pblock->vtx.push_back(MakeTransactionRef(std::move(wtx)));
+    }
+
+    // Add SidechainDB state
+    CTransaction stateTx = GetSidechainStateTx();
+    for (const CTxOut& out : stateTx.vout) {
+        coinbaseTx.vout.push_back(out);
+        nSideFees += out.nValue;
+    }
+
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
+    coinbaseTx.vout[0].nValue -= nSideFees;
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
@@ -358,6 +379,22 @@ void BlockAssembler::UpdatePackagesForAdded(const CTxMemPool::setEntries& alread
             }
         }
     }
+}
+
+CTransaction BlockAssembler::GetSidechainWTJoin(const uint8_t nSidechain)
+{
+    return scdb.GetWTJoinTx(nSidechain);
+}
+
+CTransaction BlockAssembler::GetSidechainStateTx()
+{
+    CMutableTransaction mtx;
+
+    CScript script = scdb.CreateStateScript();
+    if (!script.empty())
+        mtx.vout.push_back(CTxOut(CENT, script));
+
+    return mtx;
 }
 
 // Skip entries in mapTx that are already in a block or are present

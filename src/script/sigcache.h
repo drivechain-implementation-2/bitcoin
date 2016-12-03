@@ -7,6 +7,7 @@
 #define BITCOIN_SCRIPT_SIGCACHE_H
 
 #include "script/interpreter.h"
+#include "sidechaindb.h"
 
 #include <vector>
 
@@ -20,11 +21,17 @@ class CachingTransactionSignatureChecker : public TransactionSignatureChecker
 {
 private:
     bool store;
+    SidechainDB scdbCache;
+    uint256 wtxid;
 
 public:
-    CachingTransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amount, bool storeIn, PrecomputedTransactionData& txdataIn) : TransactionSignatureChecker(txToIn, nInIn, amount, txdataIn), store(storeIn) {}
-
+    CachingTransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amount, bool storeIn, PrecomputedTransactionData& txdataIn, const SidechainDB& scdb) : TransactionSignatureChecker(txToIn, nInIn, amount, txdataIn), store(storeIn)
+    {
+        scdbCache = scdb;
+        wtxid = txToIn->GetHash();
+    }
     bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
+    bool CheckWorkScore(const CScriptNum &bnSidechain) const;
 };
 
 #endif // BITCOIN_SCRIPT_SIGCACHE_H

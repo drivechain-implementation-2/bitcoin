@@ -277,6 +277,8 @@ libbitcoin_consensus_a_SOURCES = \
   script/script_error.cpp \
   script/script_error.h \
   serialize.h \
+  sidechaindb.cpp \
+  sidechaindb.h \
   tinyformat.h \
   uint256.cpp \
   uint256.h \

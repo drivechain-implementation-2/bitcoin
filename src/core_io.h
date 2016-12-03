@@ -16,7 +16,7 @@ class UniValue;
 
 // core_read.cpp
 CScript ParseScript(const std::string& s);
-std::string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDecode = false);
+std::string ScriptToAsmStr(const CScript& script, const bool fAttemptSighashDecode = false, const bool scopDecode = false);
 bool DecodeHexTx(CTransaction& tx, const std::string& strHexTx, bool fTryNoWitness = false);
 bool DecodeHexBlk(CBlock&, const std::string& strHexBlk);
 uint256 ParseHashUV(const UniValue& v, const std::string& strName);

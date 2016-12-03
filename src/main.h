@@ -41,6 +41,8 @@ class CTxMemPool;
 class CValidationInterface;
 class CValidationState;
 
+class SidechainDB;
+
 struct PrecomputedTransactionData;
 struct LockPoints;
 
@@ -181,6 +183,9 @@ extern CAmount maxTxFee;
 /** If the tip is older than this (in seconds), the node is considered to be in initial block download. */
 extern int64_t nMaxTipAge;
 extern bool fEnableReplacement;
+
+/** SidechainDB instance used by ()() operator & miner */
+extern SidechainDB scdb;
 
 /** Best header we've seen so far (used for getheaders queries' starting points). */
 extern CBlockIndex *pindexBestHeader;

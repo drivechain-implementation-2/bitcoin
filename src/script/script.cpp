@@ -133,7 +133,7 @@ const char* GetOpName(opcodetype opcode)
     case OP_NOP1                   : return "OP_NOP1";
     case OP_CHECKLOCKTIMEVERIFY    : return "OP_CHECKLOCKTIMEVERIFY";
     case OP_CHECKSEQUENCEVERIFY    : return "OP_CHECKSEQUENCEVERIFY";
-    case OP_NOP4                   : return "OP_NOP4";
+    case OP_CHECKWORKSCORE         : return "OP_CHECKWORKSCORE";
     case OP_NOP5                   : return "OP_NOP5";
     case OP_NOP6                   : return "OP_NOP6";
     case OP_NOP7                   : return "OP_NOP7";
@@ -150,6 +150,25 @@ const char* GetOpName(opcodetype opcode)
 
     default:
         return "OP_UNKNOWN";
+    }
+}
+
+const char* GetSCOPName(opcodetype opcode)
+{
+    switch (opcode)
+    {
+    // push value
+    case OP_RETURN            : return "OP_RETURN";
+    case SCOP_IGNORE          : return "SCOP_IGNORE";
+    case SCOP_REJECT          : return "SCOP_REJECT";
+    case SCOP_SC_DELIM        : return "SCOP_SC_DELIM";
+    case SCOP_VERIFY          : return "SCOP_VERIFY";
+    case SCOP_VERSION         : return "SCOP_VERSION";
+    case SCOP_VERSION_DELIM   : return "SCOP_VERSION_DELIM";
+    case SCOP_WT_DELIM        : return "SCOP_WT_DELIM";
+
+    default:
+        return "SCOP_UNKNOWN";
     }
 }
 
