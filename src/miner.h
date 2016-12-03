@@ -203,6 +203,10 @@ private:
     /** Add descendants of given transactions to mapModifiedTx with ancestor
       * state updated assuming given transactions are inBlock. */
     void UpdatePackagesForAdded(const CTxMemPool::setEntries& alreadyAdded, indexed_modified_transaction_set &mapModifiedTx);
+
+    // SidechainDB
+    CTransaction GetSidechainWTx(const uint8_t nSidechain);
+    CTransaction GetSidechainStateTx();
 };
 
 /** Modify the extranonce in a block */

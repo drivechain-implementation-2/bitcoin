@@ -11,6 +11,7 @@
 #include "crypto/sha256.h"
 #include "pubkey.h"
 #include "script/script.h"
+#include "sidechaindb.h"
 #include "uint256.h"
 
 using namespace std;
@@ -426,8 +427,40 @@ bool EvalScript(vector<vector<unsigned char> >& stack, const CScript& script, un
                     break;
                 }
 
-                case OP_NOP1: case OP_NOP4: case OP_NOP5:
-                case OP_NOP6: case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
+                case OP_CHECKWORKSCORE:
+                {
+                    if (!(flags & SCRIPT_VERIFY_CHECKWORKSCORE)) {
+                        // not enabled; treat as a NOP4
+                        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
+                        }
+                        break;
+                    }
+
+                    if (stack.size() < 1)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    // Is the sidechain valid?
+                    CScriptNum bnSidechain(stacktop(-1), fRequireMinimal);
+                    bool valid = false;
+                    for (const Sidechain &s : ValidSidechains) {
+                        if (s.nSidechain == bnSidechain.getint())
+                            valid = true;
+                    }
+                    if (!valid)
+                        return set_error(serror, SCRIPT_ERR_INVALID_SIDECHAIN);
+
+                    uint256 dummytxid; // TODO
+                    if (!checker.CheckWorkScore(bnSidechain, dummytxid))
+                        return set_error(serror, SCRIPT_ERR_UNSATISFIED_WORKSCORE);
+
+                    // TODO
+
+                    break;
+                }
+
+                case OP_NOP1: case OP_NOP5: case OP_NOP6:
+                case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
                 {
                     if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
                         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);

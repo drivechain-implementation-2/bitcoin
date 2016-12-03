@@ -29,6 +29,7 @@
 #include "script/script.h"
 #include "script/sigcache.h"
 #include "script/standard.h"
+#include "sidechaindb.h"
 #include "tinyformat.h"
 #include "txdb.h"
 #include "txmempool.h"
@@ -83,6 +84,7 @@ uint64_t nPruneTarget = 0;
 int64_t nMaxTipAge = DEFAULT_MAX_TIP_AGE;
 bool fEnableReplacement = DEFAULT_ENABLE_REPLACEMENT;
 
+SidechainDB scdb;
 
 CFeeRate minRelayTxFee = CFeeRate(DEFAULT_MIN_RELAY_TX_FEE);
 CAmount maxTxFee = DEFAULT_TRANSACTION_MAXFEE;
@@ -1974,7 +1976,7 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, int nHeight)
 bool CScriptCheck::operator()() {
     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
     const CScriptWitness *witness = (nIn < ptxTo->wit.vtxinwit.size()) ? &ptxTo->wit.vtxinwit[nIn].scriptWitness : NULL;
-    if (!VerifyScript(scriptSig, scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, amount, cacheStore, *txdata), &error)) {
+    if (!VerifyScript(scriptSig, scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, amount, cacheStore, *txdata, scdb), &error)) {
         return false;
     }
     return true;
@@ -2448,6 +2450,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         nLockTimeFlags |= LOCKTIME_VERIFY_SEQUENCE;
     }
 
+    // TODO replace
+    // Enable WORKSCORE rules right now
+    if (true) {
+        flags |= SCRIPT_VERIFY_CHECKWORKSCORE;
+    }
+
     // Start enforcing WITNESS rules using versionbits logic.
     if (IsWitnessEnabled(pindex->pprev, chainparams.GetConsensus())) {
         flags |= SCRIPT_VERIFY_WITNESS;
@@ -2495,6 +2503,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
+        } else {
+            // Let the SidechainDB look for any state updates
+            for (size_t i = 0; i < tx.vout.size(); i++)
+                scdb.Update(tx.vout[i].scriptPubKey);
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
