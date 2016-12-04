@@ -210,20 +210,23 @@ CScript SidechainDB::CreateStateScript() const
 
 std::string SidechainDB::ToString() const
 {
+    std::stringstream ss;
+
     if (!HasState())
         return "No sidechain WT^'s yet for this period.\n";
 
-    std::stringstream ss;
-    for (size_t x = 0; x < ARRAYLEN(ValidSidechains); x++) {
-        ss << GetSidechainName(x) << std::endl;
-        std::vector<std::vector<Verification>> vWTScores = GetSidechainWTs(x);
+    for (const Sidechain& s : ValidSidechains) {
+        ss << s.GetSidechainName() << std::endl;
 
-        // Print the current top WT^(s)
-        for (size_t y = 0; y < vWTScores.size(); y++) {
-            Verification v = vWTScores[y].back();
-            ss << "WT[" << y << "]:\n" << v.ToString() << std::endl;
+        std::vector<std::vector<Verification>> vWTScores;
+        vWTScores = GetSidechainWTs(s.nSidechain);
+
+        for (size_t i = 0; i < vWTScores.size(); i++) {
+            const Verification& v = vWTScores[i].back();
+            ss << "WT[" << i << "]:\n" << v.ToString() << std::endl;
         }
     }
+
     return ss.str();
 }
 
@@ -274,22 +277,6 @@ bool SidechainDB::IndexValid(uint8_t nSidechain) const
     }
 }
 
-std::string SidechainDB::GetSidechainName(uint8_t nSidechain) const
-{
-    // Check that number coresponds to a valid sidechain
-    switch (nSidechain) {
-    case SIDECHAIN_TEST:
-        return "SIDECHAIN_TEST";
-    case SIDECHAIN_HIVEMIND:
-        return "SIDECHAIN_HIVEMIND";
-    case SIDECHAIN_WIMBLE:
-        return "SIDECHAIN_WIMBLE";
-    default:
-        break;
-    }
-    return "SIDECHAIN_UNKNOWN";
-}
-
 bool SidechainDB::HasState() const
 {
     if (DB.size() < ARRAYLEN(ValidSidechains))
@@ -305,6 +292,22 @@ bool SidechainDB::HasState() const
         return true;
 
     return false;
+}
+
+std::string Sidechain::GetSidechainName() const
+{
+    // Check that number coresponds to a valid sidechain
+    switch (nSidechain) {
+    case SIDECHAIN_TEST:
+        return "SIDECHAIN_TEST";
+    case SIDECHAIN_HIVEMIND:
+        return "SIDECHAIN_HIVEMIND";
+    case SIDECHAIN_WIMBLE:
+        return "SIDECHAIN_WIMBLE";
+    default:
+        break;
+    }
+    return "SIDECHAIN_UNKNOWN";
 }
 
 std::string Sidechain::ToString() const

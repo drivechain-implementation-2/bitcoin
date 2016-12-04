@@ -21,6 +21,7 @@ struct Sidechain {
     CScript depositScript;
 
     std::string ToString() const;
+    std::string GetSidechainName() const;
 };
 
 struct Verification {
@@ -92,9 +93,6 @@ class SidechainDB
           * size of DB[]. Also check that nSidechain is in the
           * list of valid sidechains */
         bool IndexValid(uint8_t nSidechain) const;
-
-        /** Return human-readable string with nSidechain's title */
-        std::string GetSidechainName(uint8_t nSidechain) const;
 
         /** Check that the internal DB is initialized. Return
           * true if at least one of the sidechains represented
