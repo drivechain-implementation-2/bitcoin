@@ -7,6 +7,7 @@
 #include "chain.h"
 #include "core_io.h"
 #include "primitives/transaction.h"
+#include "sidechainclient.h"
 #include "utilstrencodings.h"
 
 #include <iostream>
@@ -15,21 +16,29 @@
 SidechainDB::SidechainDB()
 {
 }
-
-bool SidechainDB::Update(uint8_t nSidechain, uint16_t nBlocks, uint16_t nScore, uint256 wtxid)
+bool SidechainDeposit::operator==(const SidechainDeposit& a) const
 {
-    if (!IndexValid(nSidechain))
-        return false;
+    return (a.dtx == dtx &&
+            a.keyID == keyID &&
+            a.nSidechain == nSidechain);
+}
+std::vector<SidechainWT> SidechainDB::GetWTCache() const
+{
+    return vWTCache;
+}
 
-    Verification v;
-    v.nBlocksLeft = nBlocks;
-    v.nSidechain = nSidechain;
-    v.nWorkScore = nScore;
-    v.wtxid = wtxid;
+std::vector<SidechainDeposit> SidechainDB::GetDepositCache() const
+{
+    return vDepositCache;
+}
 
-    DB[nSidechain].push_back(v);
-
-    return true;
+bool SidechainDB::HaveDeposit(const SidechainDeposit& deposit) const
+{
+    for (const SidechainDeposit &d : vDepositCache) {
+        if (d == deposit)
+            return true;
+    }
+    return false;
 }
 
 std::string SidechainDB::ToString() const
@@ -38,27 +47,30 @@ std::string SidechainDB::ToString() const
     return ss.str();
 }
 
-bool SidechainDB::HasState() const
+std::vector<SidechainDeposit> SidechainDB::UpdateDepositCache()
 {
-    if (!DB.size())
-        return false;
+    // Request deposits from mainchain
+    SidechainClient client;
+    std::vector<SidechainDeposit> vDepositNew;
+    vDepositNew = client.getDeposits(THIS_SIDECHAIN.nSidechain);
 
-    if (!DB[SIDECHAIN_TEST].empty())
-        return true;
+    // Find new unknown deposits
+    std::vector<SidechainDeposit> vDepositNewUniq;
+    for (const SidechainDeposit& d : vDepositNew) {
+        if (HaveDeposit(d))
+            continue;
 
-    return false;
+        // Add new deposits to the cache and return vector
+        vDepositCache.push_back(d);
+        vDepositNewUniq.push_back(d);
+    }
+
+    return vDepositNewUniq;
 }
 
 std::string Sidechain::GetSidechainName() const
 {
-    // Check that number coresponds to a valid sidechain
-    switch (nSidechain) {
-    case SIDECHAIN_TEST:
-        return "SIDECHAIN_TEST";
-    default:
-        break;
-    }
-    return "SIDECHAIN_UNKNOWN";
+    return "SIDECHAIN_TEST";
 }
 
 std::string Sidechain::ToString() const
@@ -72,11 +84,20 @@ std::string Sidechain::ToString() const
     return ss.str();
 }
 
-std::string Verification::ToString() const
+std::string SidechainVerification::ToString() const
 {
     std::stringstream ss;
     ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
     ss << "nBlocksLeft=" << nBlocksLeft << std::endl;
     ss << "nWorkScore=" << nWorkScore << std::endl;
+    return ss.str();
+}
+
+std::string SidechainDeposit::ToString() const
+{
+    std::stringstream ss;
+    ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
+    ss << "dtx=" << dtx.ToString() << std::endl;
+    ss << "keyID=" << keyID.ToString() << std::endl;
     return ss.str();
 }

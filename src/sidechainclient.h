@@ -19,7 +19,7 @@ public:
 
     bool sendWT(uint256 wtjid, std::string hex);
 
-    std::vector<SidechainDeposit> getDeposits(uint256 sidechainid, uint32_t height);
+    std::vector<SidechainDeposit> getDeposits(uint8_t nSidechain);
 
 private:
     bool sendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree);

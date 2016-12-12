@@ -25,7 +25,7 @@ struct Sidechain {
     std::string GetSidechainName() const;
 };
 
-struct Verification {
+struct SidechainVerification {
     uint8_t nSidechain;
     uint16_t nBlocksLeft;
     uint16_t nWorkScore;
@@ -37,9 +37,10 @@ struct Verification {
 struct SidechainDeposit {
     uint8_t nSidechain;
     CKeyID keyID;
-    CTransaction deposit;
+    CTransaction dtx;
 
     std::string ToString() const;
+    bool operator==(const SidechainDeposit& a) const;
 };
 
 struct SidechainWT {
@@ -60,13 +61,15 @@ struct SidechainWTJoin {
 
 enum Sidechains {
     SIDECHAIN_TEST = 0,
-//    SIDECHAIN_HIVEMIND = 1,
-//    SIDECHAIN_WIMBLE = 2
 };
 
+//! This sidechain as it has been described to the mainchain
 static const Sidechain THIS_SIDECHAIN = {
     SIDECHAIN_TEST, 100, 200, 100, CScript() << OP_NOP4 /*OP_CHECKWORKSCORE*/
 };
+
+//! This sidechain's fee script
+static const CScript SIDECHAIN_FEE_SCRIPT = CScript() << OP_TRUE;
 
 //! Max number of WT^(s) per sidechain per period
 static const int SIDECHAIN_MAX_WT = 3;
@@ -76,31 +79,32 @@ static const int SIDECHAIN_STATE_VERSION = 0;
 class SidechainDB
 {
     public:
-        /** Resizes the DB to ARRAYLEN(ValidSidechains) */
         SidechainDB();
 
-        /** Update the DB state if params are valid (used directly by unit tests) */
-        bool Update(uint8_t nSidechain, uint16_t nBlocks, uint16_t nScore, uint256 wtxid);
+        /** Return const copy of current WT(s) */
+        std::vector<SidechainWT> GetWTCache() const;
 
-        /** Create a script with OP_RETURN data representing the DB state */
-        CScript CreateStateScript() const;
+        /** Return const copy of current deposits */
+        std::vector<SidechainDeposit> GetDepositCache() const;
+
+        /** Request deposits from the mainchain, add any unknown
+         *  deposits to the cache and return them in a vector */
+        std::vector<SidechainDeposit> UpdateDepositCache();
+
+        /** Return true if local cache already has deposit */
+        bool HaveDeposit(const SidechainDeposit& deposit) const;
 
         /** Print the DB */
         std::string ToString() const;
 
     private:
-        /** Internal representation of Sidechain(s) state */
-        std::vector<std::vector<Verification>> DB;
+        /** WT(s) created this period */
+        std::vector<SidechainWT> vWTCache;
 
-        /** Make sure nSidechain first of all is not beyond the
-          * size of DB[]. Also check that nSidechain is in the
-          * list of valid sidechains */
-        bool IndexValid(uint8_t nSidechain) const;
-
-        /** Check that the internal DB is initialized. Return
-          * true if at least one of the sidechains represented
-          * by the DB has a current WT^ */
-        bool HasState() const;
+        /** Deposit(s) this period.
+         *  Updated when deposit is paid out by miner and
+         *  when block is connected, if not a duplicate */
+        std::vector<SidechainDeposit> vDepositCache;
 };
 
 #endif // BITCOIN_SIDECHAINDB_H

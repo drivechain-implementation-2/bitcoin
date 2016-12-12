@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <stdlib.h>
 #include <string>
 
 #include <boost/array.hpp>
@@ -40,7 +41,7 @@ bool SidechainClient::sendWT(uint256 wtjid, std::string hex)
     return sendRequestToMainchain(json, ptree);
 }
 
-std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, uint32_t height)
+std::vector<SidechainDeposit> SidechainClient::getDeposits(uint8_t nSidechain)
 {
     // List of deposits in sidechain format for DB
     std::vector<SidechainDeposit> incoming;
@@ -48,11 +49,10 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
     // JSON for requesting sidechain deposits via mainchain HTTP-RPC
     std::string json;
     json.append("{\"jsonrpc\": \"1.0\", \"id\":\"SidechainClient\", ");
-    json.append("\"method\": \"requestsidechaindeposits\", \"params\": ");
+    json.append("\"method\": \"listsidechaindeposits\", \"params\": ");
     json.append("[\"");
-    json.append(sidechainid.GetHex());
-    json.append("\",");
-    json.append(itostr(height));
+    json.append(std::to_string(nSidechain));
+    json.append("\"");
     json.append("] }");
 
     // Try to request deposits from mainchain
@@ -71,12 +71,14 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
                 if (!data.length())
                     continue;
 
-                // Sidechain ID
-//                if (data == THIS_SIDECHAIN.nSidechain)
-//                    deposit.sidechainid.SetHex(data);
+                uint8_t nSidechain = std::stoi(data);
+                if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                    continue;
+
+                deposit.nSidechain = nSidechain;
             }
             else
-            if (v.first == "dt") {
+            if (v.first == "dtx") {
                 std::string data = v.second.data();
                 if (!data.length())
                     continue;
@@ -84,7 +86,7 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
                 // Deposit Transaction
                 CTransaction dtx;
                 if (DecodeHexTx(dtx, data))
-                    deposit.deposit = dtx;
+                    deposit.dtx = dtx;
             }
             else
             if (v.first == "keyID") {
@@ -99,7 +101,6 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
         // Add this deposit to the list
         incoming.push_back(deposit);
     }
-
     // return valid deposits in sidechain format
     return incoming;
 }
