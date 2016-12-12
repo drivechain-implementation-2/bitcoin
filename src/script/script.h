@@ -639,6 +639,12 @@ public:
         return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE);
     }
 
+    /** Return whether script is workscore (sidechain) script */
+    bool IsWorkScoreScript() const
+    {
+        return (size() > 0 && *begin() == OP_CHECKWORKSCORE);
+    }
+
     void clear()
     {
         // The default std::vector::clear() does not release memory.

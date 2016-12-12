@@ -2486,7 +2486,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         nInputs += tx.vin.size();
 
         if (!tx.IsCoinBase())
-        {
+        {   
             if (!view.HaveInputs(tx))
                 return state.DoS(100, error("ConnectBlock(): inputs missing/spent"),
                                  REJECT_INVALID, "bad-txns-inputs-missingorspent");
@@ -2503,8 +2503,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
+
+            // Check for new sidechain deposits
+            if (tx.IsSidechainDeposit())
+                scdb.AddSidechainDeposit(tx);
         } else {
-            // Let the SidechainDB look for any state updates
+            // Check for new sidechain state update scripts
             for (size_t i = 0; i < tx.vout.size(); i++)
                 scdb.Update(tx.vout[i].scriptPubKey);
         }

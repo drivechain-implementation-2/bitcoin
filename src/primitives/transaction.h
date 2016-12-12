@@ -430,6 +430,15 @@ public:
         return (vin.size() == 1 && vin[0].prevout.IsNull());
     }
 
+    bool IsSidechainDeposit() const
+    {
+        for (size_t i = 0; i < vout.size(); i++) {
+            if (vout[i].scriptPubKey.IsWorkScoreScript())
+                return true;
+        }
+        return false;
+    }
+
     friend bool operator==(const CTransaction& a, const CTransaction& b)
     {
         return a.hash == b.hash;
