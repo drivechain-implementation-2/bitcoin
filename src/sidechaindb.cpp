@@ -7,6 +7,7 @@
 #include "chain.h"
 #include "core_io.h"
 #include "primitives/transaction.h"
+#include "sidechainclient.h"
 #include "utilstrencodings.h"
 
 #include <iostream>
@@ -16,20 +17,39 @@ SidechainDB::SidechainDB()
 {
 }
 
-bool SidechainDB::Update(uint8_t nSidechain, uint16_t nBlocks, uint16_t nScore, uint256 wtxid)
+bool SidechainWT::operator==(const SidechainWT& a) const
 {
-    if (!IndexValid(nSidechain))
-        return false;
+    return (a.nSidechain == nSidechain &&
+            a.keyID == keyID &&
+            a.wt == wt);
+}
 
-    Verification v;
-    v.nBlocksLeft = nBlocks;
-    v.nSidechain = nSidechain;
-    v.nWorkScore = nScore;
-    v.wtxid = wtxid;
+std::vector<SidechainWT> SidechainDB::GetWTCache() const
+{
+    return vWTCache;
+}
 
-    DB[nSidechain].push_back(v);
+std::vector<CTransaction> SidechainDB::GetWTJoinCache()
+{
+    return vWTJoinCache;
+}
 
-    return true;
+bool SidechainDB::HaveWTJoin(const uint256& txid) const
+{
+    for (const CTransaction& tx : vWTJoinCache) {
+        if (txid == tx.GetHash())
+            return true;
+    }
+    return false;
+}
+
+bool SidechainDB::HaveWT(const SidechainWT& wt) const
+{
+    for (const SidechainWT& w : vWTCache) {
+        if (w == wt)
+            return true;
+    }
+    return false;
 }
 
 std::string SidechainDB::ToString() const
@@ -38,27 +58,57 @@ std::string SidechainDB::ToString() const
     return ss.str();
 }
 
-bool SidechainDB::HasState() const
+bool SidechainDB::AddSidechainWTJoin(const CTransaction& tx)
 {
-    if (!DB.size())
+    // Check the WT^
+    if (tx.IsNull())
+        return false;
+    if (vWTJoinCache.size() > SIDECHAIN_MAX_WT)
+        return false;
+    if (HaveWTJoin(tx.GetHash()))
+        return false;
+    // Try to send WT^ to the mainchain
+    SidechainClient client;
+    if (!client.BroadcastWTJoin(EncodeHexTx(tx)))
         return false;
 
-    if (!DB[SIDECHAIN_TEST].empty())
-        return true;
+    // Cache WT^
+    vWTJoinCache.push_back(tx);
+    return true;
+}
 
-    return false;
+bool SidechainDB::AddSidechainWT(const CTransaction& tx)
+{
+    for (size_t i = 0; i < tx.vout.size(); i++) {
+        CScript script = tx.vout[i].scriptPubKey;
+        if (script.size() > 2 && script.IsWTScript()) {
+            std::vector<unsigned char> vch;
+            opcodetype opcode;
+            CScript::const_iterator pkey = script.begin() + 1;
+            if (!script.GetOp2(pkey, opcode, &vch))
+                return false;
+
+            CKeyID keyID;
+            keyID.SetHex(std::string(vch.begin(), vch.end()));
+
+            if (keyID.IsNull())
+                return false;
+
+            SidechainWT wt;
+            wt.nSidechain = THIS_SIDECHAIN.nSidechain;
+            wt.keyID = keyID;
+            wt.wt = tx;
+
+            if (!HaveWT(wt))
+                vWTCache.push_back(wt);
+        }
+    }
+    return true;
 }
 
 std::string Sidechain::GetSidechainName() const
 {
-    // Check that number coresponds to a valid sidechain
-    switch (nSidechain) {
-    case SIDECHAIN_TEST:
-        return "SIDECHAIN_TEST";
-    default:
-        break;
-    }
-    return "SIDECHAIN_UNKNOWN";
+    return "SIDECHAIN_TEST";
 }
 
 std::string Sidechain::ToString() const
@@ -72,11 +122,20 @@ std::string Sidechain::ToString() const
     return ss.str();
 }
 
-std::string Verification::ToString() const
+std::string SidechainVerification::ToString() const
 {
     std::stringstream ss;
     ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
     ss << "nBlocksLeft=" << nBlocksLeft << std::endl;
     ss << "nWorkScore=" << nWorkScore << std::endl;
+    return ss.str();
+}
+
+std::string SidechainWT::ToString() const
+{
+    std::stringstream ss;
+    ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
+    ss << "keyID=" << keyID.ToString() << std::endl;
+    ss << "wt=" << wt.ToString() << std::endl;
     return ss.str();
 }

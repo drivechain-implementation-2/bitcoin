@@ -31,12 +31,9 @@ public:
     void setWalletModel(WalletModel *model);
 
 public Q_SLOTS:
-    // Passthrough to use existing signal
     void setBalance(const CAmount& balance, const CAmount& unconfirmedBalance,
                     const CAmount& immatureBalance, const CAmount& watchOnlyBalance,
                     const CAmount& watchUnconfBalance, const CAmount& watchImmatureBalance);
-
-    void displayBalance(const CAmount& balance, const CAmount& pending);
 
 private Q_SLOTS:
     void on_pushButtonWithdraw_clicked();
@@ -66,7 +63,7 @@ private:
     SidechainHistoryTableModel *incomingTableModel;
     SidechainHistoryTableModel *outgoingTableModel;
 
-    bool validate();
+    bool validateWTAmount();
 
     void generateAddress();
 };

@@ -129,7 +129,6 @@ BITCOIN_CORE_H = \
   script/sign.h \
   script/standard.h \
   script/ismine.h \
-  sidechainclient.h \
   streams.h \
   support/allocators/secure.h \
   support/allocators/zeroafterfree.h \
@@ -197,7 +196,6 @@ libbitcoin_server_a_SOURCES = \
   rpc/server.cpp \
   script/sigcache.cpp \
   script/ismine.cpp \
-  sidechainclient.cpp \
   timedata.cpp \
   torcontrol.cpp \
   txdb.cpp \
@@ -267,6 +265,8 @@ libbitcoin_consensus_a_SOURCES = \
   prevector.h \
   primitives/block.cpp \
   primitives/block.h \
+  primitives/sidechain.cpp \
+  primitives/sidechain.h \
   primitives/transaction.cpp \
   primitives/transaction.h \
   pubkey.cpp \
@@ -279,6 +279,8 @@ libbitcoin_consensus_a_SOURCES = \
   script/script_error.cpp \
   script/script_error.h \
   serialize.h \
+  sidechainclient.cpp \
+  sidechainclient.h \
   sidechaindb.cpp \
   sidechaindb.h \
   tinyformat.h \

@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <stdlib.h>
 #include <string>
 
 #include <boost/array.hpp>
@@ -23,24 +24,24 @@ SidechainClient::SidechainClient()
 
 }
 
-bool SidechainClient::sendWT(uint256 wtjid, std::string hex)
+bool SidechainClient::BroadcastWTJoin(std::string hex)
 {
     // JSON for sending the WT^ to mainchain via HTTP-RPC
     std::string json;
     json.append("{\"jsonrpc\": \"1.0\", \"id\":\"SidechainClient\", ");
     json.append("\"method\": \"receivesidechainwt\", \"params\": ");
     json.append("[\"");
-    json.append(wtjid.GetHex());
+    json.append(std::to_string(THIS_SIDECHAIN.nSidechain));
     json.append("\",\"");
     json.append(hex);
     json.append("\"] }");
 
     // TODO Read result, display to user
     boost::property_tree::ptree ptree;
-    return sendRequestToMainchain(json, ptree);
+    return SendRequestToMainchain(json, ptree);
 }
 
-std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, uint32_t height)
+std::vector<SidechainDeposit> SidechainClient::UpdateDeposits(uint8_t nSidechain)
 {
     // List of deposits in sidechain format for DB
     std::vector<SidechainDeposit> incoming;
@@ -48,16 +49,15 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
     // JSON for requesting sidechain deposits via mainchain HTTP-RPC
     std::string json;
     json.append("{\"jsonrpc\": \"1.0\", \"id\":\"SidechainClient\", ");
-    json.append("\"method\": \"requestsidechaindeposits\", \"params\": ");
+    json.append("\"method\": \"listsidechaindeposits\", \"params\": ");
     json.append("[\"");
-    json.append(sidechainid.GetHex());
-    json.append("\",");
-    json.append(itostr(height));
+    json.append(std::to_string(nSidechain));
+    json.append("\"");
     json.append("] }");
 
     // Try to request deposits from mainchain
     boost::property_tree::ptree ptree;
-    if (!sendRequestToMainchain(json, ptree))
+    if (!SendRequestToMainchain(json, ptree))
         return incoming; // TODO display error
 
     // Process deposits
@@ -67,44 +67,78 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint256 sidechainid, 
         BOOST_FOREACH(boost::property_tree::ptree::value_type &v, value.second.get_child("")) {
             // Looping through this deposit's members
             if (v.first == "nSidechain") {
+                // Read sidechain number
                 std::string data = v.second.data();
                 if (!data.length())
                     continue;
+                uint8_t nSidechain = std::stoi(data);
+                if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                    continue;
 
-                // Sidechain ID
-//                if (data == THIS_SIDECHAIN.nSidechain)
-//                    deposit.sidechainid.SetHex(data);
+                deposit.nSidechain = nSidechain;
             }
             else
-            if (v.first == "dt") {
+            if (v.first == "dtx") {
+                // Read deposit transaction hex
                 std::string data = v.second.data();
                 if (!data.length())
                     continue;
-
-                // Deposit Transaction
                 CTransaction dtx;
-                if (DecodeHexTx(dtx, data))
-                    deposit.deposit = dtx;
+                if (!DecodeHexTx(dtx, data))
+                    continue;
+
+                deposit.dtx = dtx;
             }
             else
             if (v.first == "keyID") {
+                // Read keyID
                 std::string data = v.second.data();
                 if (!data.length())
                     continue;
 
-                // KeyID
                 deposit.keyID.SetHex(data);
             }
         }
+
+        // Verify that the deposit script represented exits in the tx
+        bool depositValid = false;
+        for (size_t i = 0; i < deposit.dtx.vout.size(); i++) {
+            CScript scriptPubKey = deposit.dtx.vout[i].scriptPubKey;
+            if (scriptPubKey.size() > 2 && scriptPubKey.IsWorkScoreScript()) {
+                // Check sidechain number
+                uint8_t nSidechain = (unsigned int)*scriptPubKey.begin();
+                if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                    continue;
+                if (nSidechain != deposit.nSidechain)
+                    continue;
+
+                CScript::const_iterator pkey = scriptPubKey.begin() + 1;
+                std::vector<unsigned char> vch;
+                opcodetype opcode;
+                if (!scriptPubKey.GetOp2(pkey, opcode, &vch))
+                    continue;
+                if (vch.size() != sizeof(uint160))
+                    continue;
+
+                CKeyID keyID = CKeyID(uint160(vch));
+                if (keyID.IsNull())
+                    continue;
+                if (keyID != deposit.keyID)
+                    continue;
+
+                depositValid = true;
+            }
+        }
         // Add this deposit to the list
-        incoming.push_back(deposit);
+        if (depositValid)
+            incoming.push_back(deposit);
     }
 
     // return valid deposits in sidechain format
     return incoming;
 }
 
-bool SidechainClient::sendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree)
+bool SidechainClient::SendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree)
 {
     try {
         // Setup BOOST ASIO for a synchronus call to mainchain
@@ -168,20 +202,19 @@ bool SidechainClient::sendRequestToMainchain(const std::string json, boost::prop
         ss >> code;
 
         // Check response code
-        if (code != 200) return false;
+        if (code != 200)
+            return false;
 
         // Skip the rest of the header
         for (size_t i = 0; i < 5; i++)
             ss.ignore(std::numeric_limits<std::streamsize>::max(), '\r');
 
-        std::string JSON;
-        ss >> JSON;
-
-        std::stringstream jss;
-        jss << JSON;
-
         // Parse json response;
         // TODO consider using univalue read_json instead of boost
+        std::string JSON;
+        ss >> JSON;
+        std::stringstream jss;
+        jss << JSON;
         boost::property_tree::json_parser::read_json(jss, ptree);
     } catch (std::exception &exception) {
         LogPrintf("ERROR Sidechain client (sendRequestToMainchain): %s\n", exception.what());
