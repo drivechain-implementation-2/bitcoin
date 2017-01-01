@@ -437,24 +437,16 @@ bool EvalScript(vector<vector<unsigned char> >& stack, const CScript& script, un
                         break;
                     }
 
-                    if (stack.size() < 1)
+                    if (stack.size() < 2)
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
 
                     // Is the sidechain valid?
-                    CScriptNum bnSidechain(stacktop(-1), fRequireMinimal);
-                    bool valid = false;
-                    for (const Sidechain &s : ValidSidechains) {
-                        if (s.nSidechain == bnSidechain.getint())
-                            valid = true;
-                    }
-                    if (!valid)
+                    CScriptNum bnSidechain(stacktop(-2), fRequireMinimal);
+                    if (!SidechainNumberValid(bnSidechain.getint()))
                         return set_error(serror, SCRIPT_ERR_INVALID_SIDECHAIN);
 
-                    uint256 dummytxid; // TODO
-                    if (!checker.CheckWorkScore(bnSidechain, dummytxid))
+                    if (!checker.CheckWorkScore(bnSidechain))
                         return set_error(serror, SCRIPT_ERR_UNSATISFIED_WORKSCORE);
-
-                    // TODO
 
                     break;
                 }

@@ -452,7 +452,7 @@ UniValue setmocktime(const JSONRPCRequest& request)
     return NullUniValue;
 }
 
-UniValue receivesidechainwt(const JSONRPCRequest& request/*const UniValue& params, bool fHelp*/)
+UniValue receivesidechainwt(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() != 2)
         throw runtime_error(
@@ -466,10 +466,9 @@ UniValue receivesidechainwt(const JSONRPCRequest& request/*const UniValue& param
             + HelpExampleRpc("receivesidechainwt", "")
             );
 
-    uint8_t nSidechain = request.params[0].get_int();
-
     // Is nSidechain valid?
-    if (SidechainNumberValid(nSidechain))
+    uint8_t nSidechain = std::stoi(request.params[0].getValStr());
+    if (!SidechainNumberValid(nSidechain))
         throw runtime_error("Invalid sidechain number");
 
     // Create CTransaction from hex
@@ -504,13 +503,12 @@ UniValue listsidechaindeposits(const JSONRPCRequest& request)
         );
 
     // Is nSidechain valid?
-    unsigned int nSidechain = std::stoi(request.params[0].getValStr());
+    uint8_t nSidechain = std::stoi(request.params[0].getValStr());
     if (!SidechainNumberValid(nSidechain))
         throw runtime_error("Invalid sidechain number");
 
     // Get deposits from sidechain DB
     std::vector<SidechainDeposit> vDeposit = scdb.GetSidechainDeposits(nSidechain);
-
     UniValue ret(UniValue::VOBJ);
     for (size_t i = 0; i < vDeposit.size(); i++) {
         const SidechainDeposit& deposit = vDeposit[i];
@@ -522,7 +520,6 @@ UniValue listsidechaindeposits(const JSONRPCRequest& request)
 
         ret.push_back(Pair("deposit", obj));
     }
-
     return ret;
 }
 

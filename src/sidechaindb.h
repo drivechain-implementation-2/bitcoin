@@ -19,7 +19,6 @@ struct Sidechain {
     uint16_t nWaitPeriod;
     uint16_t nVerificationPeriod;
     uint16_t nMinWorkScore;
-    CScript depositScript;
 
     std::string ToString() const;
     std::string GetSidechainName() const;
@@ -52,15 +51,13 @@ enum Sidechains {
 static const Sidechain ValidSidechains[] =
 {
     // {nSidechain, nWaitPeriod, nVerificationPeriod, nMinWorkScore, depositScript}
-    {SIDECHAIN_TEST, 100, 200, 100, CScript() << OP_CHECKWORKSCORE << SIDECHAIN_TEST},
-    {SIDECHAIN_HIVEMIND, 200, 400, 200, CScript() << OP_NOP4 /*OP_CHECKWORKSCORE*/},
-    {SIDECHAIN_WIMBLE, 200, 400, 200, CScript() << OP_NOP4 /*OP_CHECKWORKSCORE*/},
+    {SIDECHAIN_TEST, 100, 200, 100},
+    {SIDECHAIN_HIVEMIND, 200, 400, 200},
+    {SIDECHAIN_WIMBLE, 200, 400, 200},
 };
 
 //! Max number of WT^(s) per sidechain per period
 static const int SIDECHAIN_MAX_WT = 3;
-//! State script version number
-static const int SIDECHAIN_STATE_VERSION = 0;
 
 /** Make sure nSidechain first of all is not beyond the
   * size of DB[]. Also check that nSidechain is in the
@@ -91,8 +88,11 @@ class SidechainDB
         /** Return the most verified WT^ (full transaction) for nSidechain */
         CTransaction GetWT(uint8_t nSidechain) const;
 
-        /** Check if the full WT^ exists in the cache */
+        /** Return true if the full WT^ CTransaction is cached */
         bool HaveWTCached(uint256 wtxid) const;
+
+        /** Return true if the deposit is cached */
+        bool HaveDepositCached(SidechainDeposit deposit) const;
 
         /** Get all of the deposits this period for nSidechain. */
         std::vector<SidechainDeposit> GetSidechainDeposits(uint8_t nSidechain) const;

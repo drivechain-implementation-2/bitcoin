@@ -188,6 +188,22 @@ enum opcodetype
     OP_INVALIDOPCODE = 0xff,
 };
 
+enum scopcodetype {
+    // State script version
+    SCOP_VERSION = 0x00,
+
+    // Vote types
+    SCOP_REJECT = 0x52,
+    SCOP_VERIFY = 0x56,
+    SCOP_IGNORE = 0x3f,
+
+    // Delimeters
+    SCOP_VERSION_DELIM = 0x1a,
+    SCOP_WT_DELIM = 0x5e,
+    SCOP_SC_DELIM = 0x7c,
+    SCOP_END = 0x7e,
+};
+
 const char* GetOpName(opcodetype opcode);
 
 class scriptnum_error : public std::runtime_error
@@ -430,6 +446,25 @@ public:
         return *this;
     }
 
+    CScript& operator<<(scopcodetype scopcode)
+    {
+        switch (scopcode) {
+        case SCOP_END:
+        case SCOP_IGNORE:
+        case SCOP_REJECT:
+        case SCOP_SC_DELIM:
+        case SCOP_VERIFY:
+        case SCOP_VERSION:
+        case SCOP_VERSION_DELIM:
+        case SCOP_WT_DELIM:
+            break;
+        default:
+            throw std::runtime_error("CScript::operator<<(): invalid scopcode");
+        }
+        insert(end(), (unsigned char)scopcode);
+        return *this;
+    }
+
     CScript& operator<<(const CScriptNum& b)
     {
         *this << b.getvch();
@@ -639,10 +674,10 @@ public:
         return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE);
     }
 
-    /** Return whether script is workscore (sidechain) script */
+    /** Return whether script is workscore (sidechain deposit) script */
     bool IsWorkScoreScript() const
     {
-        return (size() > 0 && *begin() == OP_CHECKWORKSCORE);
+        return (size() > 0 && back() == OP_CHECKWORKSCORE);
     }
 
     void clear()

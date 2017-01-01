@@ -112,10 +112,9 @@ bool CachingTransactionSignatureChecker::VerifySignature(const std::vector<unsig
     return true;
 }
 
-bool CachingTransactionSignatureChecker::CheckWorkScore(const CScriptNum& bnSidechain, const uint256 &wtxid) const
+bool CachingTransactionSignatureChecker::CheckWorkScore(const CScriptNum& bnSidechain) const
 {
     if (!scdbCache.CheckWorkScore(bnSidechain.getint(), wtxid))
         return false;
-
     return true;
 }

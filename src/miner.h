@@ -205,7 +205,7 @@ private:
     void UpdatePackagesForAdded(const CTxMemPool::setEntries& alreadyAdded, indexed_modified_transaction_set &mapModifiedTx);
 
     // SidechainDB
-    CTransaction GetSidechainWTx(const uint8_t nSidechain);
+    CTransaction GetSidechainWTJoin(const uint8_t nSidechain);
     CTransaction GetSidechainStateTx();
 };
 

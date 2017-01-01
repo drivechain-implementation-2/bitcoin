@@ -25,16 +25,18 @@ bool SidechainDB::AddSidechainWT(uint8_t nSidechain, CTransaction wtx)
     if (HaveWTCached(wtx.GetHash()))
         return false;
 
-    std::vector<std::vector<SidechainVerification>> vWT;
-    vWT = GetSidechainWTs(nSidechain);
-
-    if (!(vWT.size() < SIDECHAIN_MAX_WT))
+    if (vWTCache.size() >= SIDECHAIN_MAX_WT)
         return false;
 
     const Sidechain& s = ValidSidechains[nSidechain];
     uint16_t nTau = s.nWaitPeriod + s.nVerificationPeriod;
 
-    return Update(nSidechain, nTau, 0, wtx.GetHash());
+    if (Update(nSidechain, nTau, 0, wtx.GetHash())) {
+        vWTCache.push_back(wtx);
+        return true;
+    }
+
+    return false;
 }
 
 bool SidechainDB::AddSidechainDeposit(const CTransaction& tx)
@@ -42,29 +44,22 @@ bool SidechainDB::AddSidechainDeposit(const CTransaction& tx)
     // Create sidechain deposit objects from transaction outputs
     std::vector<SidechainDeposit> vDepositAdd;
     for (size_t i = 0; i < tx.vout.size(); i++) {
-        CScript script = tx.vout[i].scriptPubKey;
+        const CScript &script = tx.vout[i].scriptPubKey;
         if (script.IsWorkScoreScript()) {
-            std::vector<unsigned char> vch;
-            opcodetype opcode;
 
-            CScript::const_iterator psidechain = script.begin() + 1;
-            vch.clear();
-
-            if (!script.GetOp2(psidechain, opcode, &vch))
-                return false;
-
-            uint8_t nSidechain = (unsigned int)opcode;
+            uint8_t nSidechain = (unsigned int)*script.begin();
             if (!SidechainNumberValid(nSidechain))
                 return false;
 
-            CScript::const_iterator pkey = script.begin() + 2;
-            vch.clear();
+            std::vector<unsigned char> vch;
+            opcodetype opcode;
+            CScript::const_iterator pkey = script.begin() + 1;
             if (!script.GetOp2(pkey, opcode, &vch))
                 return false;
+            if (vch.size() != sizeof(uint160))
+                return false;
 
-            CKeyID keyID;
-            keyID.SetHex(std::string(vch.begin(), vch.end()));
-
+            CKeyID keyID = CKeyID(uint160(vch));
             if (keyID.IsNull())
                 return false;
 
@@ -95,16 +90,16 @@ bool SidechainDB::AddSidechainDeposit(const CTransaction& tx)
     if (error)
         return false;
 
-    for (const SidechainDeposit& d : vDepositAdd)
-        vDepositCache.push_back(d);
+    for (const SidechainDeposit& d : vDepositAdd) {
+        if (!HaveDepositCached(d))
+            vDepositCache.push_back(d);
+    }
 
     return true;
 }
 
 bool SidechainDB::Update(const CScript& script)
 {
-    // TODO refactor this messy function
-
     // If there aren't any known WT^(s) there is nothing to update
     if (!HasState())
         return false;
@@ -123,31 +118,30 @@ bool SidechainDB::Update(const CScript& script)
     if (opcode != OP_RETURN)
         return false;
 
-    // Get the data
-    std::vector<unsigned char> data;
-    data.assign(script.begin() + 2, script.begin() + script.size());
-
-    if (data.size() < 3)
+    if (script.size() < 3)
         return false;
-    if (data[0] != SIDECHAIN_STATE_VERSION || data[1] != ':')
+    if (script[1] != SCOP_VERSION || script[2] != SCOP_VERSION_DELIM)
         return false;
 
     uint8_t nSidechain = 0;
     size_t nWTIndex = 0;
-    for (size_t i = 2; i < data.size(); i++) {
+    for (size_t i = 3; i < script.size(); i++) {
         if (!SidechainNumberValid(nSidechain))
             return false;
-        if (data[i] == '.') {
+        if (script[i] == SCOP_WT_DELIM) {
             nWTIndex++;
             continue;
         }
-        if (data[i] == '|') {
+
+        if (script[i] == SCOP_SC_DELIM) {
             nWTIndex = 0;
             nSidechain++;
             continue;
         }
 
-        if (data[i] != 0 && data[i] != 1 && data[i] != 2)
+        // Check for valid vote type before going further
+        const char& vote = script[i];
+        if (vote != SCOP_REJECT && vote != SCOP_VERIFY && vote != SCOP_IGNORE)
             continue;
 
         std::vector<std::vector<SidechainVerification>> vWT = GetSidechainWTs(nSidechain);
@@ -156,15 +150,18 @@ bool SidechainDB::Update(const CScript& script)
 
         const SidechainVerification& old = vWT[nWTIndex].back();
 
-        if (data[i] == 0)
-            return Update(old.nSidechain, old.nBlocksLeft - 1, old.nWorkScore - 1, old.wtxid);
+        // TODO mind limits
+        uint16_t nBlocksLeft = old.nBlocksLeft - 1;
+        if (vote == SCOP_REJECT)
+            return Update(old.nSidechain, nBlocksLeft, old.nWorkScore - 1, old.wtxid);
         else
-        if (data[i] == 1)
-            return Update(old.nSidechain, old.nBlocksLeft - 1, old.nWorkScore + 1, old.wtxid);
+        if (vote == SCOP_VERIFY)
+            return Update(old.nSidechain, nBlocksLeft, old.nWorkScore + 1, old.wtxid);
         else
-        if (data[i] == 2)
-            return Update(old.nSidechain, old.nBlocksLeft - 1, old.nWorkScore, old.wtxid);
+        if (vote == SCOP_IGNORE)
+            return Update(old.nSidechain, nBlocksLeft, old.nWorkScore, old.wtxid);
     }
+
     return false;
 }
 
@@ -215,6 +212,9 @@ bool SidechainDB::CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const
 
 CTransaction SidechainDB::GetWT(uint8_t nSidechain) const
 {
+    if (!SidechainNumberValid(nSidechain))
+        return CTransaction();
+
     // Grab list of sidechain's WT^ candidates
     std::vector<std::vector<SidechainVerification>> vWT;
     vWT = GetSidechainWTs(nSidechain);
@@ -235,6 +235,10 @@ CTransaction SidechainDB::GetWT(uint8_t nSidechain) const
     if (hashBest == uint256())
         return CTransaction();
 
+    // Is the WT^ verified?
+    if (scoreBest < ValidSidechains[nSidechain].nMinWorkScore)
+        return CTransaction();
+
     // Return the full transaction from WT^ cache if it exists
     for (const CTransaction& tx : vWTCache) {
         if (tx.GetHash() == hashBest)
@@ -248,6 +252,15 @@ bool SidechainDB::HaveWTCached(uint256 wtxid) const
 {
     for (const CTransaction& tx : vWTCache) {
         if (tx.GetHash() == wtxid)
+            return true;
+    }
+    return false;
+}
+
+bool SidechainDB::HaveDepositCached(SidechainDeposit deposit) const
+{
+    for (const SidechainDeposit& d : vDepositCache) {
+        if (d == deposit)
             return true;
     }
     return false;
@@ -274,9 +287,8 @@ CScript SidechainDB::CreateStateScript() const
     if (!HasState())
         return CScript();
 
-    // Create a stream, add the current state script version
-    std::ostringstream os(std::ios::binary);
-    os << std::hex << SIDECHAIN_STATE_VERSION << ':';
+    CScript script;
+    script << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM;
 
     // Add the current DB state to the stream
     for (size_t x = 0; x < DB.size(); x++) {
@@ -297,25 +309,19 @@ CScript SidechainDB::CreateStateScript() const
         for (size_t z = 0; z < vWT.size(); z++) {
             const SidechainVerification& v = vWT[z].back();
             if (v.wtxid == best.wtxid) {
-                os << 1;
+                script << SCOP_VERIFY;
             } else {
-                os << 0;
+                script << SCOP_REJECT;
             }
             // Delimit WT^(s)
             if (z != vWT.size() - 1)
-                os << std::hex << '.';
+                script << SCOP_WT_DELIM;
         }
 
         // Delimit sidechains
         if (x != DB.size() - 1)
-            os << std::hex << '|';
+            script << SCOP_SC_DELIM;
     }
-
-    // Add the state stream to a script
-    CScript script;
-    std::string state(os.str());
-    script << OP_RETURN << std::vector<unsigned char>(state.begin(), state.end());
-
     return script;
 }
 
@@ -408,6 +414,13 @@ bool SidechainNumberValid(uint8_t nSidechain)
     }
 }
 
+bool SidechainDeposit::operator==(const SidechainDeposit& a) const
+{
+    return (a.nSidechain == nSidechain &&
+            a.keyID == keyID &&
+            a.dtx == dtx);
+}
+
 std::string Sidechain::GetSidechainName() const
 {
     // Check that number coresponds to a valid sidechain
@@ -431,7 +444,6 @@ std::string Sidechain::ToString() const
     ss << "nWaitPeriod=" << nWaitPeriod << std::endl;
     ss << "nVerificationPeriod=" << nVerificationPeriod << std::endl;
     ss << "nMinWorkScore=" << nMinWorkScore << std::endl;
-    ss << "depositScript=" << ScriptToAsmStr(depositScript) << std::endl;
     return ss.str();
 }
 

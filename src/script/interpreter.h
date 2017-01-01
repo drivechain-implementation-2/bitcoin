@@ -147,7 +147,7 @@ public:
          return false;
     }
 
-    virtual bool CheckWorkScore(const CScriptNum& nSidechain, const uint256& wtxid) const
+    virtual bool CheckWorkScore(const CScriptNum& nSidechain) const
     {
         return false;
     }

@@ -2505,12 +2505,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
 
             // Check for new sidechain deposits
-            if (tx.IsSidechainDeposit())
-                scdb.AddSidechainDeposit(tx);
+            if (tx.IsSidechainDeposit() && !fJustCheck)
+                scdb.AddSidechainDeposit(tx); 
         } else {
             // Check for new sidechain state update scripts
-            for (size_t i = 0; i < tx.vout.size(); i++)
-                scdb.Update(tx.vout[i].scriptPubKey);
+            if (!fJustCheck) {
+                for (size_t i = 0; i < tx.vout.size(); i++)
+                    scdb.Update(tx.vout[i].scriptPubKey);
+            }
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
@@ -2595,7 +2597,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     static uint256 hashPrevBestCoinBase;
     GetMainSignals().UpdatedTransaction(hashPrevBestCoinBase);
     hashPrevBestCoinBase = block.vtx[0]->GetHash();
-
 
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint("bench", "    - Callbacks: %.2fms [%.2fs]\n", 0.001 * (nTime6 - nTime5), nTimeCallbacks * 0.000001);

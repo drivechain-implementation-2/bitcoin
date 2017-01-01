@@ -54,10 +54,21 @@ void SidechainDepositDialog::on_pushButtonDeposit_clicked()
 
     const Sidechain& s = ValidSidechains[nSidechain];
 
-    std::vector <CRecipient> vRecipient;
+    // Get keyID
+    CBitcoinAddress address(ui->lineEditAddress->text().toStdString());
+    CKeyID keyID;
+    if (!address.GetKeyID(keyID)) {
+        errorDialog.setWindowTitle("Invalid deposit address");
+        errorDialog.exec();
+        return;
+    }
 
-    // Payment to sidechain deposit script
-    CRecipient payment = {s.depositScript, ui->payAmount->value(), false};
+    // Add keyID to a script
+    CScript script = CScript() << s.nSidechain << ToByteVector(keyID) << OP_CHECKWORKSCORE;
+
+    // Payment to deposit script (sidechain number + keyID + CHECKWORKSCORE)
+    std::vector <CRecipient> vRecipient;
+    CRecipient payment = {script, ui->payAmount->value(), false};
     vRecipient.push_back(payment);
 
     // Create deposit transaction
