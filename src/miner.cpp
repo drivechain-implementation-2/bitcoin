@@ -179,6 +179,17 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
     coinbaseTx.vout[0].nValue = nFees;
+
+    // Create WT^
+    CTransaction wtJoinTx = CreateWTJoinTx(chainActive.Height() + 1);
+    if (!wtJoinTx.IsNull())
+        scdb.AddSidechainWTJoin(wtJoinTx);
+
+    // Create deposit transactions
+    CTransaction depositTx = CreateDepositTx();
+    for (const CTxOut& out : depositTx.vout)
+        coinbaseTx.vout.push_back(out);
+
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
@@ -614,34 +625,46 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 /** Create a payout transaction for any new deposits */
 CTransaction CreateDepositTx()
 {
-    std::vector<SidechainDeposit> vDepositNew = scdb.UpdateDepositCache();
-
-    if (!vDepositNew.size())
+    std::vector<SidechainDeposit> vDepositNewUniq = scdb.UpdateDepositCache();
+    if (!vDepositNewUniq.size())
         return CTransaction();
 
     // Create deposit payout(s) transaction
     CMutableTransaction mtx;
-    for (size_t i = 0; i < vDepositNew.size(); i++) {
-        // TODO Skip duplicates
-        // This only will skip duplicates from the current period
-        if (scdb.HaveDeposit(vDepositNew[i]))
-            continue;
-
+    for (size_t i = 0; i < vDepositNewUniq.size(); i++) {
         // Pay keyID the deposit
-        for (size_t j = 0; j < vDepositNew[i].dtx.vout.size(); i++) {
-            if (vDepositNew[i].dtx.vout[j].scriptPubKey == THIS_SIDECHAIN.depositScript) {
-                CScript script;
-                script << OP_DUP << OP_HASH160 << ToByteVector(vDepositNew[i].keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
-                mtx.vout.push_back(CTxOut(vDepositNew[i].dtx.vout[j].nValue, script));
-            }
+        for (size_t j = 0; j < vDepositNewUniq[i].dtx.vout.size(); j++) {
+            const CScript& scriptPubKey = vDepositNewUniq[i].dtx.vout[j].scriptPubKey;
+
+            // Check that this is a workscore script
+            if (!scriptPubKey.size() || scriptPubKey.back() != OP_NOP4)
+                continue;
+
+            uint8_t nSidechain = (unsigned int)*scriptPubKey.begin();
+            if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                continue;
+
+            // Check that the key provided is at least the correct size
+            std::vector<unsigned char> vch;
+            opcodetype opcode;
+            CScript::const_iterator pkey = scriptPubKey.begin() + 1;
+            if (!scriptPubKey.GetOp2(pkey, opcode, &vch))
+                continue;
+            if (vch.size() != sizeof(uint160))
+                continue;
+
+            CScript script;
+            script << OP_DUP << OP_HASH160 << ToByteVector(vDepositNewUniq[i].keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
+            mtx.vout.push_back(CTxOut(vDepositNewUniq[i].dtx.vout[j].nValue, script));
         }
     }
     return mtx;
 }
 
+// TODO seperate fund WT^ logic
 /** Create joined WT^ to be sent to the mainchain */
 CTransaction CreateWTJoinTx(uint32_t nHeight)
-{
+{   
     const Sidechain& s = THIS_SIDECHAIN;
     uint32_t nTau = s.nWaitPeriod + s.nVerificationPeriod;
 
@@ -657,7 +680,7 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
     CAmount joinFee = 0;     // Total fees
     CMutableTransaction mtx; // WT^
     for (size_t i = 0; i < vWithdraw.size(); i++) {
-        CAmount amount = vWithdraw[i].wt.GetValueOut();
+        CAmount amount = vWithdraw[i].wt.GetValueOutToWT();
 
         // Calculate fee (which gets split in two)
         unsigned int nBytes = GetSerializeSize(vWithdraw[i].wt, SER_NETWORK, PROTOCOL_VERSION);
@@ -679,7 +702,7 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
 
     // Add join fee (the sidechain half) leave the rest for mainchain miners
     if (joinFee > 0)
-        mtx.vout.push_back(CTxOut((joinFee / 2), SIDECHAIN_FEE_SCRIPT));
+        mtx.vout.push_back(CTxOut((joinFee / 2), SIDECHAIN_FEESCRIPT));
 
     // TODO FundWTJoinTx function
     // Add inputs to cover WT^
@@ -689,22 +712,39 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
             break;
 
         for (size_t j = 0; j < vDeposit[i].dtx.vout.size(); j++) {
-            // Skip non deposit output(s)
-            if (vDeposit[i].dtx.vout[j].scriptPubKey != THIS_SIDECHAIN.depositScript)
-                continue;
+            // Check deposit
+            const CScript& scriptPubKey = vDeposit[i].dtx.vout[j].scriptPubKey;
 
-            CAmount depositAmount = vDeposit[i].dtx.vout[j].nValue;
+            if (scriptPubKey.IsWorkScoreScript()) {
+                uint8_t nSidechain = (unsigned int)*scriptPubKey.begin();
+                if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                    continue;
 
-            if ((joinAmount - depositAmount) < 0) {
-                CAmount change = std::abs(joinAmount - depositAmount);
-                mtx.vout.push_back(CTxOut(change - joinFee, THIS_SIDECHAIN.depositScript));
-                joinAmount = (joinAmount - depositAmount) + change;
-            } else {
-                joinAmount -= depositAmount;
+                CScript::const_iterator pkey = scriptPubKey.begin() + 1;
+                std::vector<unsigned char> vch;
+                opcodetype opcode;
+                if (!scriptPubKey.GetOp2(pkey, opcode, &vch))
+                    continue;
+                if (vch.size() != sizeof(uint160))
+                    continue;
+
+                CKeyID keyID = CKeyID(uint160(vch));
+                if (keyID.IsNull())
+                    continue;
+
+                CAmount depositAmount = vDeposit[i].dtx.vout[j].nValue;
+
+                if ((joinAmount - depositAmount) < 0) {
+                    CAmount change = std::abs(joinAmount - depositAmount);
+                    mtx.vout.push_back(CTxOut(change - joinFee, THIS_SIDECHAIN.depositScript));
+                    joinAmount = (joinAmount - depositAmount) + change;
+                } else {
+                    joinAmount -= depositAmount;
+                }
+
+                CTxIn in(vDeposit[i].dtx.GetHash(), j);
+                mtx.vin.push_back(in);
             }
-
-            CTxIn in(vDeposit[i].dtx.GetHash(), j);
-            mtx.vin.push_back(in);
         }
     }
 

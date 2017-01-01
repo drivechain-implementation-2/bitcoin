@@ -2484,6 +2484,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
+
+            // Look for individual wt(s)
+            if (tx.IsSidechainWT())
+                scdb.AddSidechainWT(tx);
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:

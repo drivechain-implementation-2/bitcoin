@@ -412,6 +412,9 @@ public:
     // GetValueIn() is a method on CCoinsViewCache, because
     // inputs must be known to compute value in.
 
+    // Return sum of txouts to WT scripts
+    CAmount GetValueOutToWT() const;
+
     // Compute priority, given priority of inputs and (optionally) tx size
     double ComputePriority(double dPriorityInputs, unsigned int nTxSize=0) const;
 
@@ -428,6 +431,15 @@ public:
     bool IsCoinBase() const
     {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
+    }
+
+    bool IsSidechainWT() const
+    {
+        for (size_t i = 0; i < vout.size(); i++) {
+            if (vout[i].scriptPubKey.IsWTScript())
+                return true;
+        }
+        return false;
     }
 
     friend bool operator==(const CTransaction& a, const CTransaction& b)

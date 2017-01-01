@@ -165,25 +165,20 @@ void SidechainPage::on_pushButtonWT_clicked()
         return;
     }
 
-    // WT
-    SidechainWT wt;
-
-    // Set wt KeyID
+    // Get KeyID
+    CKeyID keyID;
     CBitcoinAddress address(ui->payTo->text().toStdString());
-    if (!address.GetKeyID(wt.keyID)) {
+    if (!address.GetKeyID(keyID)) {
         // TODO make pretty
         dialog.setWindowTitle("Invalid address");
         dialog.exec();
         return;
     }
 
-    // Set wt sidechain ID
-    wt.nSidechain = THIS_SIDECHAIN.nSidechain;
-
     // Send payment to wt script
     std::vector<CRecipient> vecSend;
-    CScript wtScript = CScript() << OP_RETURN << THIS_SIDECHAIN.nSidechain; // TODO
-    CRecipient recipient = {wtScript, ui->payAmount->value(), false};
+    CScript script = CScript() << OP_WT << ToByteVector(keyID.GetHex());
+    CRecipient recipient = {script, ui->payAmount->value(), false};
     vecSend.push_back(recipient);
 
     CWalletTx wtx;

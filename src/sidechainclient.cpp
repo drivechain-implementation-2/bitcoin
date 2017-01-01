@@ -31,7 +31,7 @@ bool SidechainClient::sendWT(uint256 wtjid, std::string hex)
     json.append("{\"jsonrpc\": \"1.0\", \"id\":\"SidechainClient\", ");
     json.append("\"method\": \"receivesidechainwt\", \"params\": ");
     json.append("[\"");
-    json.append(wtjid.GetHex());
+    json.append(std::to_string(THIS_SIDECHAIN.nSidechain));
     json.append("\",\"");
     json.append(hex);
     json.append("\"] }");
