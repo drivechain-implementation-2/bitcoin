@@ -16,12 +16,16 @@ public:
     ~SidechainDepositDialog();
 
 private Q_SLOTS:
-    void on_pushButtonRequestAddress_clicked();
-
     void on_pushButtonDeposit_clicked();
+
+    void on_pushButtonPaste_clicked();
+
+    void on_pushButtonClear_clicked();
 
 private:
     Ui::SidechainDepositDialog *ui;
+
+    bool validateDepositAmount();
 };
 
 #endif // SIDECHAINDEPOSITDIALOG_H
