@@ -22,7 +22,7 @@
 
 #include <QApplication>
 #include <QClipboard>
-#include <QDialog>
+#include <QMessageBox>
 #include <QStackedWidget>
 
 #if defined(HAVE_CONFIG_H)
@@ -79,7 +79,8 @@ void SidechainPage::generateQR(QString data)
     if (data.isEmpty())
         return;
 
-    if (data.size() != 34)
+    CBitcoinAddress address(data.toStdString());
+    if (!address.IsValid())
         return;
 
 #ifdef USE_QRCODE
@@ -118,13 +119,9 @@ void SidechainPage::setWalletModel(WalletModel *model)
 void SidechainPage::setBalance(const CAmount& balance, const CAmount& unconfirmedBalance,
                                const CAmount& immatureBalance, const CAmount& watchOnlyBalance,
                                const CAmount& watchUnconfBalance, const CAmount& watchImmatureBalance)
-{
-    displayBalance(balance, immatureBalance + unconfirmedBalance);
-}
-
-void SidechainPage::displayBalance(const CAmount& balance, const CAmount& pending)
-{
+{  
     int unit = walletModel->getOptionsModel()->getDisplayUnit();
+    const CAmount& pending = immatureBalance + unconfirmedBalance;
     ui->available->setText(BitcoinUnits::formatWithUnit(unit, balance, false, BitcoinUnits::separatorAlways));
     ui->pending->setText(BitcoinUnits::formatWithUnit(unit, pending, false, BitcoinUnits::separatorAlways));
 }
@@ -151,17 +148,22 @@ void SidechainPage::on_pushButtonNew_clicked()
 
 void SidechainPage::on_pushButtonWT_clicked()
 {
-    QDialog dialog;
+    QMessageBox messageBox;
+    messageBox.setDefaultButton(QMessageBox::Ok);
 
-    if (!validate()) {
-        dialog.setWindowTitle("Invalid entry");
-        dialog.exec();
+    if (pwalletMain->IsLocked()) {
+        // Locked wallet message box
+        messageBox.setWindowTitle("Wallet locked!");
+        messageBox.setText("Wallet must be unlocked to withdraw from sidechain.");
+        messageBox.exec();
         return;
     }
 
-    if (pwalletMain->IsLocked()) {
-        dialog.setWindowTitle("Wallet must be unlocked");
-        dialog.exec();
+    if (!validateWTAmount()) {
+        // Invalid withdrawal amount message box
+        messageBox.setWindowTitle("Invalid withdrawal amount!");
+        messageBox.setText("Check the amount you have entered and try again.");
+        messageBox.exec();
         return;
     }
 
@@ -169,16 +171,18 @@ void SidechainPage::on_pushButtonWT_clicked()
     CKeyID keyID;
     CBitcoinAddress address(ui->payTo->text().toStdString());
     if (!address.GetKeyID(keyID)) {
-        // TODO make pretty
-        dialog.setWindowTitle("Invalid address");
-        dialog.exec();
+        // Invalid address message box
+        messageBox.setWindowTitle("Invalid destination address!");
+        messageBox.setText("Check the address you have entered and try again.");
+        messageBox.exec();
         return;
     }
 
     // Send payment to wt script
     std::vector<CRecipient> vecSend;
     CScript script = CScript() << OP_WT << ToByteVector(keyID.GetHex());
-    CRecipient recipient = {script, ui->payAmount->value(), false};
+    const CAmount& withdrawAmt = ui->payAmount->value();
+    CRecipient recipient = {script, withdrawAmt, false};
     vecSend.push_back(recipient);
 
     CWalletTx wtx;
@@ -188,20 +192,38 @@ void SidechainPage::on_pushButtonWT_clicked()
     std::string strError;
     if (!pwalletMain->CreateTransaction(vecSend, wtx, reserveKey, nFee, nChangePos, strError))
     {
-        // TODO make pretty
-        dialog.setWindowTitle(QString::fromStdString(strError));
-        dialog.exec();
+        // Create transaction error message box
+        messageBox.setWindowTitle("Creating withdraw transaction failed!");
+        QString createError = "Error creating transaction: ";
+        createError += QString::fromStdString(strError);
+        createError += "\n";
+        messageBox.setText(createError);
+        messageBox.exec();
         return;
     }
 
     CValidationState state;
     if (!pwalletMain->CommitTransaction(wtx, reserveKey, g_connman.get(), state))
     {
-        // TODO make pretty
-        dialog.setWindowTitle("Failed to commit wt transaction");
-        dialog.exec();
+        // Commit transaction error message box
+        messageBox.setWindowTitle("Committing withdraw transaction failed!");
+        QString commitError = "Error committing transaction: ";
+        commitError += QString::fromStdString(state.GetRejectReason());
+        commitError += "\n";
+        messageBox.setText(commitError);
+        messageBox.exec();
         return;
     }
+
+    // Successful withdraw message box
+    messageBox.setWindowTitle("Withdraw transaction created!");
+    QString result = "txid: " + QString::fromStdString(wtx.GetHash().ToString());
+    result += "\n";
+    result += "Amount withdrawn: ";
+    int unit = walletModel->getOptionsModel()->getDisplayUnit();
+    result += BitcoinUnits::formatWithUnit(unit, withdrawAmt, false, BitcoinUnits::separatorAlways);
+    messageBox.setText(result);
+    messageBox.exec();
 }
 
 void SidechainPage::on_addressBookButton_clicked()
@@ -220,17 +242,15 @@ void SidechainPage::on_deleteButton_clicked()
     ui->payTo->clear();
 }
 
-bool SidechainPage::validate()
+bool SidechainPage::validateWTAmount()
 {
-    // Check address
-    CBitcoinAddress address(ui->payTo->text().toStdString());
-    if (!address.IsValid()) return false;
-
-    if (!ui->payAmount->validate()) return false;
+    if (!ui->payAmount->validate()) {
+        ui->payAmount->setValid(false);
+        return false;
+    }
 
     // Sending a zero amount is invalid
-    if (ui->payAmount->value(0) <= 0)
-    {
+    if (ui->payAmount->value(0) <= 0) {
         ui->payAmount->setValid(false);
         return false;
     }
