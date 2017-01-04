@@ -188,20 +188,20 @@ enum opcodetype
     OP_INVALIDOPCODE = 0xff,
 };
 
+/* Sidechain state script opcodes (not really opcodes) */
 enum scopcodetype {
     // State script version
     SCOP_VERSION = 0x00,
 
     // Vote types
-    SCOP_REJECT = 0x52,
-    SCOP_VERIFY = 0x56,
-    SCOP_IGNORE = 0x3f,
+    SCOP_REJECT = 0xb0,
+    SCOP_VERIFY = 0xb1,
+    SCOP_IGNORE = 0xb2,
 
     // Delimeters
-    SCOP_VERSION_DELIM = 0x1a,
-    SCOP_WT_DELIM = 0x5e,
-    SCOP_SC_DELIM = 0x7c,
-    SCOP_END = 0x7e,
+    SCOP_VERSION_DELIM = 0xb3,
+    SCOP_WT_DELIM = 0xb4,
+    SCOP_SC_DELIM = 0xb5,
 };
 
 const char* GetOpName(opcodetype opcode);
@@ -449,7 +449,6 @@ public:
     CScript& operator<<(scopcodetype scopcode)
     {
         switch (scopcode) {
-        case SCOP_END:
         case SCOP_IGNORE:
         case SCOP_REJECT:
         case SCOP_SC_DELIM:

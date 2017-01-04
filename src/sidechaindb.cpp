@@ -140,7 +140,7 @@ bool SidechainDB::Update(const CScript& script)
         }
 
         // Check for valid vote type before going further
-        const char& vote = script[i];
+        const unsigned char& vote = script[i];
         if (vote != SCOP_REJECT && vote != SCOP_VERIFY && vote != SCOP_IGNORE)
             continue;
 
