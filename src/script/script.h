@@ -629,13 +629,13 @@ public:
     bool IsPushOnly(const_iterator pc) const;
     bool IsPushOnly() const;
 
-    /** Return whether script is wt */
+    /** Return whether script is wt (individual withdrawal to be joined in WT^) */
     bool IsWTScript() const
     {
         return (size() > 0 && *begin() == OP_WT);
     }
 
-    /** Return whether script is deposit */
+    /** Return whether script is deposit (NOP_4 is OP_CHECKWORKSCORE on mainchain) */
     bool IsWorkScoreScript() const
     {
         return (size() > 0 && back() == OP_NOP4);

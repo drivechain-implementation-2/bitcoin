@@ -625,6 +625,7 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 /** Create a payout transaction for any new deposits */
 CTransaction CreateDepositTx()
 {
+    // Get a list of unseen deposit(s)
     std::vector<SidechainDeposit> vDepositNewUniq = scdb.UpdateDepositCache();
     if (!vDepositNewUniq.size())
         return CTransaction();
@@ -632,27 +633,21 @@ CTransaction CreateDepositTx()
     // Create deposit payout(s) transaction
     CMutableTransaction mtx;
     for (size_t i = 0; i < vDepositNewUniq.size(); i++) {
-        // Pay keyID the deposit
         for (size_t j = 0; j < vDepositNewUniq[i].dtx.vout.size(); j++) {
             const CScript& scriptPubKey = vDepositNewUniq[i].dtx.vout[j].scriptPubKey;
 
             // Check that this is a workscore script
             if (!scriptPubKey.size() || scriptPubKey.back() != OP_NOP4)
                 continue;
-
+            // Check that the deposit belongs to this sidechain
             uint8_t nSidechain = (unsigned int)*scriptPubKey.begin();
             if (nSidechain != THIS_SIDECHAIN.nSidechain)
                 continue;
-
-            // Check that the key provided is at least the correct size
-            std::vector<unsigned char> vch;
-            opcodetype opcode;
-            CScript::const_iterator pkey = scriptPubKey.begin() + 1;
-            if (!scriptPubKey.GetOp2(pkey, opcode, &vch))
-                continue;
-            if (vch.size() != sizeof(uint160))
+            // Check that keyID is not null
+            if (vDepositNewUniq[i].keyID.IsNull())
                 continue;
 
+            // Pay keyID the deposit
             CScript script;
             script << OP_DUP << OP_HASH160 << ToByteVector(vDepositNewUniq[i].keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
             mtx.vout.push_back(CTxOut(vDepositNewUniq[i].dtx.vout[j].nValue, script));
@@ -661,7 +656,6 @@ CTransaction CreateDepositTx()
     return mtx;
 }
 
-// TODO seperate fund WT^ logic
 /** Create joined WT^ to be sent to the mainchain */
 CTransaction CreateWTJoinTx(uint32_t nHeight)
 {   
@@ -676,13 +670,13 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
         return CTransaction();
 
     // Add valid WT(s) to WT^
-    CAmount joinAmount = 0;  // Total output
+    CAmount joinAmount = 0;  // Total output - fees
     CAmount joinFee = 0;     // Total fees
     CMutableTransaction mtx; // WT^
     for (size_t i = 0; i < vWithdraw.size(); i++) {
         CAmount amount = vWithdraw[i].wt.GetValueOutToWT();
 
-        // Calculate fee (which gets split in two)
+        // Calculate fee (split evenly between sidechain & mainchain)
         unsigned int nBytes = GetSerializeSize(vWithdraw[i].wt, SER_NETWORK, PROTOCOL_VERSION);
         CAmount nFee = 2*CWallet::GetMinimumFee(nBytes, 2, mempool);
 
@@ -704,32 +698,19 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
     if (joinFee > 0)
         mtx.vout.push_back(CTxOut((joinFee / 2), SIDECHAIN_FEESCRIPT));
 
-    // TODO FundWTJoinTx function
+    // TODO seperate FundWTJoinTx function
     // Add inputs to cover WT^
     std::vector<SidechainDeposit> vDeposit = scdb.GetDepositCache();
     for (size_t i = 0; i < vDeposit.size(); i++) {
-        if (!(joinAmount > 0))
+        if (joinAmount <= 0)
             break;
 
         for (size_t j = 0; j < vDeposit[i].dtx.vout.size(); j++) {
-            // Check deposit
             const CScript& scriptPubKey = vDeposit[i].dtx.vout[j].scriptPubKey;
-
             if (scriptPubKey.IsWorkScoreScript()) {
-                uint8_t nSidechain = (unsigned int)*scriptPubKey.begin();
-                if (nSidechain != THIS_SIDECHAIN.nSidechain)
+                if (vDeposit[i].nSidechain != THIS_SIDECHAIN.nSidechain)
                     continue;
-
-                CScript::const_iterator pkey = scriptPubKey.begin() + 1;
-                std::vector<unsigned char> vch;
-                opcodetype opcode;
-                if (!scriptPubKey.GetOp2(pkey, opcode, &vch))
-                    continue;
-                if (vch.size() != sizeof(uint160))
-                    continue;
-
-                CKeyID keyID = CKeyID(uint160(vch));
-                if (keyID.IsNull())
+                if (vDeposit[i].keyID.IsNull())
                     continue;
 
                 CAmount depositAmount = vDeposit[i].dtx.vout[j].nValue;
@@ -748,7 +729,7 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
         }
     }
 
-    if (joinAmount > 0)
+    if (joinAmount != 0)
         return CTransaction();
 
     return mtx;

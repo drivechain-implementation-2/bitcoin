@@ -67,10 +67,7 @@ static const Sidechain THIS_SIDECHAIN = {
 };
 
 //! This sidechain's fee script
-//static const CScript SIDECHAIN_FEE_SCRIPT = CScript() << OP_TRUE;
-
 static const CScript SIDECHAIN_FEESCRIPT = CScript() << OP_DUP << OP_HASH160 << ToByteVector(testkey) << OP_EQUALVERIFY << OP_CHECKSIG;
-
 //! Max number of WT^(s) per sidechain per period
 static const int SIDECHAIN_MAX_WT = 3;
 //! State script version number

@@ -2486,7 +2486,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
 
             // Look for individual wt(s)
-            if (tx.IsSidechainWT())
+            if (!fJustCheck && tx.IsSidechainWT())
                 scdb.AddSidechainWT(tx);
         }
 

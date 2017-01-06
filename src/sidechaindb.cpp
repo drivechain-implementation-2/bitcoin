@@ -122,11 +122,10 @@ bool SidechainDB::AddSidechainWT(const CTransaction& tx)
 {
     for (size_t i = 0; i < tx.vout.size(); i++) {
         CScript script = tx.vout[i].scriptPubKey;
-        if (script.IsWTScript()) {
+        if (script.size() > 2 && script.IsWTScript()) {
             std::vector<unsigned char> vch;
             opcodetype opcode;
             CScript::const_iterator pkey = script.begin() + 1;
-
             if (!script.GetOp2(pkey, opcode, &vch))
                 return false;
 
