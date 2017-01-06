@@ -50,7 +50,7 @@ enum Sidechains {
 
 static const Sidechain ValidSidechains[] =
 {
-    // {nSidechain, nWaitPeriod, nVerificationPeriod, nMinWorkScore, depositScript}
+    // {nSidechain, nWaitPeriod, nVerificationPeriod, nMinWorkScore}
     {SIDECHAIN_TEST, 100, 200, 100},
     {SIDECHAIN_HIVEMIND, 200, 400, 200},
     {SIDECHAIN_WIMBLE, 200, 400, 200},
@@ -71,7 +71,7 @@ class SidechainDB
         SidechainDB();
 
         /** Add a new WT^ to the database */
-        bool AddSidechainWT(uint8_t nSidechain, CTransaction wtx);
+        bool AddSidechainWTJoin(uint8_t nSidechain, CTransaction wtx);
 
         /** Add deposit to cache */
         bool AddSidechainDeposit(const CTransaction &tx);
@@ -86,10 +86,10 @@ class SidechainDB
         bool CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const;
 
         /** Return the most verified WT^ (full transaction) for nSidechain */
-        CTransaction GetWT(uint8_t nSidechain) const;
+        CTransaction GetWTJoin(uint8_t nSidechain) const;
 
         /** Return true if the full WT^ CTransaction is cached */
-        bool HaveWTCached(uint256 wtxid) const;
+        bool HaveWTJoinCached(uint256 wtxid) const;
 
         /** Return true if the deposit is cached */
         bool HaveDepositCached(SidechainDeposit deposit) const;
@@ -110,7 +110,7 @@ class SidechainDB
         /** The DB vector stores verifications, which contain as one member
          *  the hash / txid of the WT^ being verified. This vector stores the
          *  full transaction(s) so that they can be looked up as needed */
-        std::vector<CTransaction> vWTCache;
+        std::vector<CTransaction> vWTJoinCache;
 
         /** Track deposits created during this period */
         std::vector<SidechainDeposit> vDepositCache;

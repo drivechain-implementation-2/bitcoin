@@ -183,8 +183,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     CAmount nSideFees = 0;
 
     // Add WT^(s) which have been validated
-    for (size_t i = 0; i < ARRAYLEN(ValidSidechains); i++) {
-        CTransaction wtx = GetSidechainWTJoin(ValidSidechains[i].nSidechain);
+    for (const Sidechain& s : ValidSidechains) {
+        CTransaction wtx = GetSidechainWTJoin(s.nSidechain);
         if (wtx.vout.size() && wtx.vin.size())
             pblock->vtx.push_back(MakeTransactionRef(std::move(wtx)));
     }
@@ -383,7 +383,7 @@ void BlockAssembler::UpdatePackagesForAdded(const CTxMemPool::setEntries& alread
 
 CTransaction BlockAssembler::GetSidechainWTJoin(const uint8_t nSidechain)
 {
-    return scdb.GetWT(nSidechain);
+    return scdb.GetWTJoin(nSidechain);
 }
 
 CTransaction BlockAssembler::GetSidechainStateTx()

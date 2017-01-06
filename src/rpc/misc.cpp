@@ -480,7 +480,7 @@ UniValue receivesidechainwt(const JSONRPCRequest& request)
         throw runtime_error("Invalid WT^ hex");
 
     // Add WT^ to sidechain DB and start verification
-    if (!scdb.AddSidechainWT(nSidechain, wt))
+    if (!scdb.AddSidechainWTJoin(nSidechain, wt))
         throw runtime_error("WT^ rejected");
 
     // Return WT^ hash to verify it has been received

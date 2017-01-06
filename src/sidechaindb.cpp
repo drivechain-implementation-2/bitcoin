@@ -14,25 +14,24 @@
 
 SidechainDB::SidechainDB()
 {
+    // TODO Read state from historical blocks if SCDB initialized mid tau
     DB.resize(ARRAYLEN(ValidSidechains));
 }
 
-bool SidechainDB::AddSidechainWT(uint8_t nSidechain, CTransaction wtx)
+bool SidechainDB::AddSidechainWTJoin(uint8_t nSidechain, CTransaction wtx)
 {
+    if (vWTJoinCache.size() >= SIDECHAIN_MAX_WT)
+        return false;
     if (!SidechainNumberValid(nSidechain))
         return false;
-
-    if (HaveWTCached(wtx.GetHash()))
-        return false;
-
-    if (vWTCache.size() >= SIDECHAIN_MAX_WT)
+    if (HaveWTJoinCached(wtx.GetHash()))
         return false;
 
     const Sidechain& s = ValidSidechains[nSidechain];
     uint16_t nTau = s.nWaitPeriod + s.nVerificationPeriod;
 
     if (Update(nSidechain, nTau, 0, wtx.GetHash())) {
-        vWTCache.push_back(wtx);
+        vWTJoinCache.push_back(wtx);
         return true;
     }
 
@@ -46,7 +45,6 @@ bool SidechainDB::AddSidechainDeposit(const CTransaction& tx)
     for (size_t i = 0; i < tx.vout.size(); i++) {
         const CScript &script = tx.vout[i].scriptPubKey;
         if (script.IsWorkScoreScript()) {
-
             uint8_t nSidechain = (unsigned int)*script.begin();
             if (!SidechainNumberValid(nSidechain))
                 return false;
@@ -108,38 +106,35 @@ bool SidechainDB::Update(const CScript& script)
     if (script.size() < 5)
         return false;
 
-    CScript::const_iterator pc = script.begin();
-    std::vector<unsigned char> vch;
-    opcodetype opcode;
-
-    // Get the opcode
-    if (!script.GetOp2(pc, opcode, &vch))
-        return false;
-    if (opcode != OP_RETURN)
+    // State script begins with OP_RETURN
+    if (*script.begin() != OP_RETURN)
         return false;
 
-    if (script.size() < 3)
-        return false;
+    // Check state script version
     if (script[1] != SCOP_VERSION || script[2] != SCOP_VERSION_DELIM)
         return false;
 
+    // Interpret state
     uint8_t nSidechain = 0;
     size_t nWTIndex = 0;
     for (size_t i = 3; i < script.size(); i++) {
         if (!SidechainNumberValid(nSidechain))
             return false;
+
+        // Move on to this sidechain's next WT^
         if (script[i] == SCOP_WT_DELIM) {
             nWTIndex++;
             continue;
         }
 
+        // Move on to the next sidechain
         if (script[i] == SCOP_SC_DELIM) {
             nWTIndex = 0;
             nSidechain++;
             continue;
         }
 
-        // Check for valid vote type before going further
+        // Check for valid vote type
         const unsigned char& vote = script[i];
         if (vote != SCOP_REJECT && vote != SCOP_VERIFY && vote != SCOP_IGNORE)
             continue;
@@ -186,7 +181,7 @@ bool SidechainDB::CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const
     if (!SidechainNumberValid(nSidechain))
         return false;
 
-    // Get the scores for this sidechain (x = WT^, y = verifications)
+    // Get the scores for this sidechain (x = WT^s, y = verifications)
     std::vector<std::vector<SidechainVerification>> vScores;
     vScores = GetSidechainWTs(nSidechain);
 
@@ -206,11 +201,10 @@ bool SidechainDB::CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const
         if (nScore >= ValidSidechains[nSidechain].nMinWorkScore)
             return true;
     }
-
     return false;
 }
 
-CTransaction SidechainDB::GetWT(uint8_t nSidechain) const
+CTransaction SidechainDB::GetWTJoin(uint8_t nSidechain) const
 {
     if (!SidechainNumberValid(nSidechain))
         return CTransaction();
@@ -222,12 +216,12 @@ CTransaction SidechainDB::GetWT(uint8_t nSidechain) const
     // Lookup the current best WT^ candidate for sidechain
     uint256 hashBest;
     int scoreBest = 0;
-    for (size_t x = 0; x < vWT.size(); x++) {
-        if (!vWT[x].size())
+    for (size_t i = 0; i < vWT.size(); i++) {
+        if (!vWT[i].size())
             continue;
-        if (vWT[x].back().nWorkScore > scoreBest) {
-            hashBest = vWT[x].back().wtxid;
-            scoreBest = vWT[x].back().nWorkScore;
+        if (vWT[i].back().nWorkScore > scoreBest) {
+            hashBest = vWT[i].back().wtxid;
+            scoreBest = vWT[i].back().nWorkScore;
         }
     }
 
@@ -240,17 +234,16 @@ CTransaction SidechainDB::GetWT(uint8_t nSidechain) const
         return CTransaction();
 
     // Return the full transaction from WT^ cache if it exists
-    for (const CTransaction& tx : vWTCache) {
+    for (const CTransaction& tx : vWTJoinCache) {
         if (tx.GetHash() == hashBest)
             return tx;
     }
-
     return CTransaction();
 }
 
-bool SidechainDB::HaveWTCached(uint256 wtxid) const
+bool SidechainDB::HaveWTJoinCached(uint256 wtxid) const
 {
-    for (const CTransaction& tx : vWTCache) {
+    for (const CTransaction& tx : vWTJoinCache) {
         if (tx.GetHash() == wtxid)
             return true;
     }
@@ -269,12 +262,10 @@ bool SidechainDB::HaveDepositCached(SidechainDeposit deposit) const
 std::vector<SidechainDeposit> SidechainDB::GetSidechainDeposits(uint8_t nSidechain) const
 {
     std::vector<SidechainDeposit> vSidechainDeposit;
-
     for (size_t i = 0; i < vDepositCache.size(); i++) {
         if (vDepositCache[i].nSidechain == nSidechain)
             vSidechainDeposit.push_back(vDepositCache[i]);
     }
-
     return vSidechainDeposit;
 }
 
@@ -290,15 +281,15 @@ CScript SidechainDB::CreateStateScript() const
     CScript script;
     script << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM;
 
-    // Add the current DB state to the stream
+    // Add the current DB state to the stream (x = WT^s, y = verifications)
     for (size_t x = 0; x < DB.size(); x++) {
         std::vector<std::vector<SidechainVerification>> vWT = GetSidechainWTs(x);
 
         // Find the current best
         SidechainVerification best;
         best.nWorkScore = 0;
-        for (size_t y = 0; y < vWT.size(); y++) {
-            const SidechainVerification& v = vWT[y].back();
+        for (size_t i = 0; i < vWT.size(); i++) {
+            const SidechainVerification& v = vWT[i].back();
             if (best.nWorkScore == 0)
                 best = v;
             if (v.nWorkScore > best.nWorkScore)
@@ -306,15 +297,15 @@ CScript SidechainDB::CreateStateScript() const
         }
 
         // Upvote the current best
-        for (size_t z = 0; z < vWT.size(); z++) {
-            const SidechainVerification& v = vWT[z].back();
+        for (size_t y = 0; y < vWT.size(); y++) {
+            const SidechainVerification& v = vWT[y].back();
             if (v.wtxid == best.wtxid) {
                 script << SCOP_VERIFY;
             } else {
                 script << SCOP_REJECT;
             }
             // Delimit WT^(s)
-            if (z != vWT.size() - 1)
+            if (y != vWT.size() - 1)
                 script << SCOP_WT_DELIM;
         }
 
@@ -341,12 +332,11 @@ std::string SidechainDB::ToString() const
         vWTCandidate = GetSidechainWTs(s.nSidechain);
 
         // Add current top WT^ for this sidechain to stream
-        for (size_t i = 0; i < vWTCandidate.size(); i++) {
-            const SidechainVerification& v = vWTCandidate[i].back();
-            ss << "WT[" << i << "]:\n" << v.ToString() << std::endl;
+        for (size_t x = 0; x < vWTCandidate.size(); x++) {
+            const SidechainVerification& v = vWTCandidate[x].back();
+            ss << "WT[" << x << "]:\n" << v.ToString() << std::endl;
         }
     }
-
     return ss.str();
 }
 
@@ -354,6 +344,8 @@ std::vector<std::vector<SidechainVerification>> SidechainDB::GetSidechainWTs(uin
 {
     std::vector<std::vector<SidechainVerification>> vSidechainWT;
 
+    if (!SidechainNumberValid(nSidechain))
+        return vSidechainWT;
     if (!HasState())
         return vSidechainWT;
 
@@ -364,7 +356,6 @@ std::vector<std::vector<SidechainVerification>> SidechainDB::GetSidechainWTs(uin
         for (size_t y = 0; y < vSidechainWT.size(); y++) {
             if (!vSidechainWT[y].size())
                 continue;
-
             if (v.wtxid == vSidechainWT[y][0].wtxid) {
                 vSidechainWT[y].push_back(v);
                 match = true;
@@ -377,7 +368,6 @@ std::vector<std::vector<SidechainVerification>> SidechainDB::GetSidechainWTs(uin
             vSidechainWT.push_back(vWT);
         }
     }
-
     return vSidechainWT;
 }
 
@@ -400,7 +390,7 @@ bool SidechainDB::HasState() const
 
 bool SidechainNumberValid(uint8_t nSidechain)
 {
-    if (!(nSidechain < ARRAYLEN(ValidSidechains)))
+    if (nSidechain > ARRAYLEN(ValidSidechains))
         return false;
 
     // Check that number coresponds to a valid sidechain
@@ -451,7 +441,7 @@ std::string SidechainDeposit::ToString() const
 {
     std::stringstream ss;
     ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
-    ss << "keyID=" << keyID.ToString()<< std::endl;
+    ss << "keyID=" << keyID.ToString() << std::endl;
     ss << "dtx=" << dtx.ToString() << std::endl;
     return ss.str();
 }

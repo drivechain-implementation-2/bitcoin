@@ -2505,7 +2505,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
 
             // Check for new sidechain deposits
-            if (tx.IsSidechainDeposit() && !fJustCheck)
+            if (!fJustCheck && tx.IsSidechainDeposit())
                 scdb.AddSidechainDeposit(tx); 
         } else {
             // Check for new sidechain state update scripts
