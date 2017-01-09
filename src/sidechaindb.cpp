@@ -34,7 +34,6 @@ bool SidechainDB::AddSidechainWTJoin(uint8_t nSidechain, CTransaction wtx)
         vWTJoinCache.push_back(wtx);
         return true;
     }
-
     return false;
 }
 
@@ -92,7 +91,6 @@ bool SidechainDB::AddSidechainDeposit(const CTransaction& tx)
         if (!HaveDepositCached(d))
             vDepositCache.push_back(d);
     }
-
     return true;
 }
 
@@ -156,7 +154,6 @@ bool SidechainDB::Update(const CScript& script)
         if (vote == SCOP_IGNORE)
             return Update(old.nSidechain, nBlocksLeft, old.nWorkScore, old.wtxid);
     }
-
     return false;
 }
 
@@ -172,7 +169,6 @@ bool SidechainDB::Update(uint8_t nSidechain, uint16_t nBlocks, uint16_t nScore, 
     v.wtxid = wtxid;
 
     DB[nSidechain].push_back(v);
-
     return true;
 }
 

@@ -153,6 +153,25 @@ const char* GetOpName(opcodetype opcode)
     }
 }
 
+const char* GetSCOPName(opcodetype opcode)
+{
+    switch (opcode)
+    {
+    // push value
+    case OP_RETURN            : return "OP_RETURN";
+    case SCOP_IGNORE          : return "SCOP_IGNORE";
+    case SCOP_REJECT          : return "SCOP_REJECT";
+    case SCOP_SC_DELIM        : return "SCOP_SC_DELIM";
+    case SCOP_VERIFY          : return "SCOP_VERIFY";
+    case SCOP_VERSION         : return "SCOP_VERSION";
+    case SCOP_VERSION_DELIM   : return "SCOP_VERSION_DELIM";
+    case SCOP_WT_DELIM        : return "SCOP_WT_DELIM";
+
+    default:
+        return "SCOP_UNKNOWN";
+    }
+}
+
 unsigned int CScript::GetSigOpCount(bool fAccurate) const
 {
     unsigned int n = 0;

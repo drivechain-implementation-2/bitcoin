@@ -205,6 +205,7 @@ enum scopcodetype {
 };
 
 const char* GetOpName(opcodetype opcode);
+const char* GetSCOPName(opcodetype opcode);
 
 class scriptnum_error : public std::runtime_error
 {

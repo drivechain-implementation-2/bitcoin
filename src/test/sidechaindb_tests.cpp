@@ -70,7 +70,8 @@ CBlock CreateBlock(const std::vector<CMutableTransaction>& txns, const CScript& 
     unsigned int extraNonce = 0;
     IncrementExtraNonce(&block, chainActive.Tip(), extraNonce);
 
-    while (!CheckProofOfWork(block.GetHash(), block.nBits, chainparams.GetConsensus())) ++block.nNonce;
+    while (!CheckProofOfWork(block.GetHash(), block.nBits, chainparams.GetConsensus()))
+        ++block.nNonce;
 
     CBlock result = block;
     return result;
@@ -84,6 +85,8 @@ bool ProcessBlock(const CBlock &block)
 
 BOOST_AUTO_TEST_CASE(sidechaindb_blockchain)
 {
+    // Test SCDB with blockchain
+
     // Create deposit
     CMutableTransaction depositTX;
     depositTX.vin.resize(1);
@@ -94,20 +97,20 @@ BOOST_AUTO_TEST_CASE(sidechaindb_blockchain)
     depositTX.vout[0].scriptPubKey = CScript() << SIDECHAIN_TEST << ToByteVector(testkey) << OP_NOP4;
 
     CScript scriptPubKey = CScript() <<  ToByteVector(coinbaseKey.GetPubKey()) << OP_CHECKSIG;
-
     std::vector<unsigned char> vchSig;
     uint256 hash = SignatureHash(scriptPubKey, depositTX, 0, SIGHASH_ALL, 0, SIGVERSION_BASE);
     BOOST_CHECK(coinbaseKey.Sign(hash, vchSig));
     vchSig.push_back((unsigned char)SIGHASH_ALL);
     depositTX.vin[0].scriptSig << vchSig;
 
+    // Add deposit to blockchain
     std::vector<CMutableTransaction> vDeposit;
     vDeposit.push_back(depositTX);
-
-    // Add deposit to blockchain
     CBlock depositBlock = CreateBlock(vDeposit, scriptPubKey);
 
+    int preDepositHeight = chainActive.Height();
     BOOST_CHECK(ProcessBlock(depositBlock));
+    BOOST_REQUIRE(chainActive.Height() == (preDepositHeight + 1));
 
     // Create WT^ (try to spend the deposit created in the previous block)
     CMutableTransaction wtx;
@@ -116,23 +119,64 @@ BOOST_AUTO_TEST_CASE(sidechaindb_blockchain)
     wtx.vin[0].prevout.n = 0;
     wtx.vout.resize(1);
     wtx.vout[0].nValue = 42 * CENT;
-    wtx.vout[0].scriptPubKey = scriptPubKey;
+    wtx.vout[0].scriptPubKey = CScript() << OP_DUP << OP_HASH160 << ToByteVector(testkey) << OP_CHECKSIGVERIFY;
 
+    // Add WT^ to blockchain
     std::vector<CMutableTransaction> vWT;
     vWT.push_back(wtx);
-
     CBlock spendBlock = CreateBlock(vWT, scriptPubKey);
 
     // Workscore should be invalid right now
-    BOOST_CHECK(ProcessBlock(spendBlock));
+    int heightPreSpend = chainActive.Height();
+    ProcessBlock(spendBlock);
+    BOOST_REQUIRE(chainActive.Height() == heightPreSpend);
+
+    // TODO
+    // Manully submit WT^ to SCDB for tracking and verification
+    // BOOST_REQUIRE(scdb.AddSidechainWTJoin(SIDECHAIN_TEST, wtx));
 
     // Make workscore valid
-    for (unsigned int i = 0; i < 200; i++) {
+    int heightPreVote = chainActive.Height();
+    for (unsigned int i = 0; i < 100; i++) {
+        // Generate a new coinbase if we need to
+        if ((i + 1) == coinbaseTxns.size()) {
+            std::vector<CMutableTransaction> noTxns;
+            CBlock b = CreateAndProcessBlock(noTxns, scriptPubKey);
+            coinbaseTxns.push_back(*b.vtx[0]);
+        }
+
         CMutableTransaction verificationTX;
-        // TODO create verifications
+        verificationTX.vin.resize(1);
+        verificationTX.vin[0].prevout.hash = coinbaseTxns[i].GetHash();
+        verificationTX.vin[0].prevout.n = 0;
+        verificationTX.vout.resize(1);
+        verificationTX.vout[0].nValue = CENT;
+        verificationTX.vout[0].scriptPubKey = scdb.CreateStateScript();
+
+        std::vector<unsigned char> vchSigSpend;
+        uint256 hashSpend = SignatureHash(scriptPubKey, verificationTX, 0, SIGHASH_ALL, 0, SIGVERSION_BASE);
+        coinbaseKey.Sign(hashSpend, vchSigSpend);
+        vchSigSpend.push_back((unsigned char)SIGHASH_ALL);
+        verificationTX.vin[0].scriptSig << vchSigSpend;
+
         std::vector<CMutableTransaction> txns;
-        // CreateAndProcessBlock(txns, scriptPubKey);
+        txns.push_back(verificationTX);
+
+        CreateAndProcessBlock(txns, scriptPubKey);
     }
+
+    int heightPreWTJoin = chainActive.Height();
+    BOOST_REQUIRE(heightPreWTJoin == (heightPreVote + 100));
+
+    const Sidechain &sidechainTest = ValidSidechains[SIDECHAIN_TEST];
+    uint16_t nTau = sidechainTest.nWaitPeriod + sidechainTest.nVerificationPeriod;
+    for (int i = heightPreWTJoin; i < nTau; i++) {
+        std::vector<CMutableTransaction> noTxns;
+        CBlock b = CreateAndProcessBlock(noTxns, scriptPubKey);
+        coinbaseTxns.push_back(*b.vtx[0]);
+    }
+
+    BOOST_REQUIRE(chainActive.Height() == nTau);
 }
 
 BOOST_AUTO_TEST_CASE(sidechaindb_isolated)
@@ -184,58 +228,52 @@ BOOST_AUTO_TEST_CASE(sidechaindb_CreateStateScript)
 
     std::vector<CMutableTransaction> vDepositTx = CreateDepositTransactions();
     BOOST_REQUIRE(vDepositTx.size() == 3);
-    std::vector<unsigned char> data;
 
-    //Empty DB test
-    SidechainDB dbEmpty;
-    CScript empty = dbEmpty.CreateStateScript();
-    data.assign(empty.begin(), empty.begin() + empty.size());
-    std::string strEmpty(data.begin(), data.end());
+    // Test empty SCDB
+    CScript scriptEmptyExpected = CScript();
+    SidechainDB scdbEmpty;
 
-    BOOST_CHECK(strEmpty == "");
+    BOOST_CHECK(scriptEmptyExpected == scdbEmpty.CreateStateScript());
 
-    // Sparsely populated DB test
-    CScript scriptPopulated;
-    scriptPopulated << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
+    // Test populated (but not full) SCDB test
+    CScript scriptPopulatedExpected;
+    scriptPopulatedExpected << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
                     << SCOP_VERIFY << SCOP_SC_DELIM
                     << SCOP_VERIFY << SCOP_SC_DELIM
                     << SCOP_VERIFY;
-    SidechainDB dbPopulated;
-    dbPopulated.Update(0, 400, 0, vDepositTx[0].GetHash());
-    dbPopulated.Update(0, 399, 1, vDepositTx[0].GetHash());
-    dbPopulated.Update(1, 398, 0, vDepositTx[0].GetHash());
-    dbPopulated.Update(2, 397, 0, vDepositTx[0].GetHash());
-    dbPopulated.Update(2, 396, 1, vDepositTx[0].GetHash());
-    dbPopulated.Update(2, 395, 2, vDepositTx[0].GetHash());
+    SidechainDB scdbPopulated;
+    scdbPopulated.Update(SIDECHAIN_TEST, 400, 0, vDepositTx[0].GetHash());
+    scdbPopulated.Update(SIDECHAIN_TEST, 399, 1, vDepositTx[0].GetHash());
+    scdbPopulated.Update(SIDECHAIN_HIVEMIND, 398, 0, vDepositTx[1].GetHash());
+    scdbPopulated.Update(SIDECHAIN_WIMBLE, 397, 0, vDepositTx[2].GetHash());
+    scdbPopulated.Update(SIDECHAIN_WIMBLE, 396, 1, vDepositTx[2].GetHash());
+    scdbPopulated.Update(SIDECHAIN_WIMBLE, 395, 2, vDepositTx[2].GetHash());
 
-    CScript scriptPopulatedTest = dbPopulated.CreateStateScript();
-    BOOST_CHECK(scriptPopulated == scriptPopulatedTest);
+    BOOST_CHECK(scriptPopulatedExpected == scdbPopulated.CreateStateScript());
 
-    // Full DB test
-    std::string fullExpected = "0:1.0.0|1.0.0|1.0.0";
-    CScript scriptFull;
-    scriptFull << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
+    // Test Full SCDB
+    CScript scriptFullExpected;
+    scriptFullExpected << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
                << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT
                << SCOP_SC_DELIM
                << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT
                << SCOP_SC_DELIM
                << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT;
-
-    SidechainDB dbFull;
+    SidechainDB scdbFull;
     int score1, score2, score3;
     score1 = score2 = score3 = 0;
     for (int i = 400; i >= 0; i--) {
-        dbFull.Update(SIDECHAIN_TEST, i, score1, vDepositTx[0].GetHash());
-        dbFull.Update(SIDECHAIN_HIVEMIND, i, score1, vDepositTx[0].GetHash());
-        dbFull.Update(SIDECHAIN_WIMBLE, i, score1, vDepositTx[0].GetHash());
+        scdbFull.Update(SIDECHAIN_TEST, i, score1, vDepositTx[0].GetHash());
+        scdbFull.Update(SIDECHAIN_HIVEMIND, i, score1, vDepositTx[0].GetHash());
+        scdbFull.Update(SIDECHAIN_WIMBLE, i, score1, vDepositTx[0].GetHash());
 
-        dbFull.Update(SIDECHAIN_TEST, i, score2, vDepositTx[1].GetHash());
-        dbFull.Update(SIDECHAIN_HIVEMIND, i, score2, vDepositTx[1].GetHash());
-        dbFull.Update(SIDECHAIN_WIMBLE, i, score2, vDepositTx[1].GetHash());
+        scdbFull.Update(SIDECHAIN_TEST, i, score2, vDepositTx[1].GetHash());
+        scdbFull.Update(SIDECHAIN_HIVEMIND, i, score2, vDepositTx[1].GetHash());
+        scdbFull.Update(SIDECHAIN_WIMBLE, i, score2, vDepositTx[1].GetHash());
 
-        dbFull.Update(SIDECHAIN_TEST, i, score3, vDepositTx[2].GetHash());
-        dbFull.Update(SIDECHAIN_HIVEMIND, i, score3, vDepositTx[2].GetHash());
-        dbFull.Update(SIDECHAIN_WIMBLE, i, score3, vDepositTx[2].GetHash());
+        scdbFull.Update(SIDECHAIN_TEST, i, score3, vDepositTx[2].GetHash());
+        scdbFull.Update(SIDECHAIN_HIVEMIND, i, score3, vDepositTx[2].GetHash());
+        scdbFull.Update(SIDECHAIN_WIMBLE, i, score3, vDepositTx[2].GetHash());
 
         score1++;
 
@@ -245,11 +283,58 @@ BOOST_AUTO_TEST_CASE(sidechaindb_CreateStateScript)
             score3++;
     }
 
-    CScript scriptFullTest = dbFull.CreateStateScript();
-    BOOST_CHECK(scriptFull == scriptFullTest);
+    BOOST_CHECK(scriptFullExpected == scdbFull.CreateStateScript());
 
-    // TODO test with different number of WT^s per sidechain
-    // TODO test with some sidechains having WT^s and some not
+    // Test with different number of WT^s per sidechain
+    CScript scriptWTCountExpected;
+    scriptWTCountExpected << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
+                          << SCOP_VERIFY
+                          << SCOP_SC_DELIM
+                          << SCOP_REJECT << SCOP_WT_DELIM << SCOP_VERIFY
+                          << SCOP_SC_DELIM
+                          << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT;
+    SidechainDB scdbCount;
+    scdbCount.Update(SIDECHAIN_TEST, 400, 0, vDepositTx[0].GetHash());
+    scdbCount.Update(SIDECHAIN_HIVEMIND, 400, 0, vDepositTx[0].GetHash());
+    scdbCount.Update(SIDECHAIN_HIVEMIND, 400, 0, vDepositTx[1].GetHash());
+    scdbCount.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[0].GetHash());
+    scdbCount.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[1].GetHash());
+    scdbCount.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[2].GetHash());
+    scdbCount.Update(SIDECHAIN_WIMBLE, 399, 1, vDepositTx[0].GetHash());
+
+    BOOST_CHECK(scriptWTCountExpected == scdbCount.CreateStateScript());
+
+    // Test with some sidechains missing WT^ for this period
+    CScript scriptMissingWTExpected;
+    scriptMissingWTExpected << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
+                            << SCOP_VERIFY
+                            << SCOP_SC_DELIM << SCOP_SC_DELIM
+                            << SCOP_REJECT;
+    SidechainDB scdbMissing;
+
+    // Test WT^ in different position for each sidechain
+    CScript scriptWTPositionExpected;
+    scriptWTPositionExpected << OP_RETURN << SCOP_VERSION << SCOP_VERSION_DELIM
+                             << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT
+                             << SCOP_SC_DELIM
+                             << SCOP_REJECT << SCOP_WT_DELIM << SCOP_VERIFY << SCOP_WT_DELIM << SCOP_REJECT
+                             << SCOP_SC_DELIM
+                             << SCOP_REJECT << SCOP_WT_DELIM << SCOP_REJECT << SCOP_WT_DELIM << SCOP_VERIFY;
+    SidechainDB scdbPosition;
+    scdbPosition.Update(SIDECHAIN_TEST, 400, 0, vDepositTx[0].GetHash());
+    scdbPosition.Update(SIDECHAIN_TEST, 400, 0, vDepositTx[1].GetHash());
+    scdbPosition.Update(SIDECHAIN_TEST, 400, 0, vDepositTx[2].GetHash());
+    scdbPosition.Update(SIDECHAIN_TEST, 399, 1, vDepositTx[0].GetHash());
+    scdbPosition.Update(SIDECHAIN_HIVEMIND, 400, 0, vDepositTx[0].GetHash());
+    scdbPosition.Update(SIDECHAIN_HIVEMIND, 400, 0, vDepositTx[1].GetHash());
+    scdbPosition.Update(SIDECHAIN_HIVEMIND, 400, 0, vDepositTx[2].GetHash());
+    scdbPosition.Update(SIDECHAIN_HIVEMIND, 399, 1, vDepositTx[1].GetHash());
+    scdbPosition.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[0].GetHash());
+    scdbPosition.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[1].GetHash());
+    scdbPosition.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[2].GetHash());
+    scdbPosition.Update(SIDECHAIN_WIMBLE, 400, 0, vDepositTx[2].GetHash());
+
+    BOOST_CHECK(scriptWTPositionExpected == scdbPosition.CreateStateScript());
 }
 
 //BOOST_AUTO_TEST_CASE(sidechaindb_Update)
