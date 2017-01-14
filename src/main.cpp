@@ -73,6 +73,7 @@ int nScriptCheckThreads = 0;
 std::atomic_bool fImporting(false);
 bool fReindex = false;
 bool fTxIndex = false;
+bool fSidechainIndex = true;
 bool fHavePruned = false;
 bool fPruneMode = false;
 bool fIsBareMultisigStd = DEFAULT_PERMIT_BAREMULTISIG;
@@ -720,6 +721,7 @@ CBlockIndex* FindForkInGlobalIndex(const CChain& chain, const CBlockLocator& loc
 
 CCoinsViewCache *pcoinsTip = NULL;
 CBlockTreeDB *pblocktree = NULL;
+CSidechainTreeDB *psidechaintree = NULL;
 
 enum FlushStateMode {
     FLUSH_STATE_NONE,
@@ -2555,6 +2557,35 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!pblocktree->WriteTxIndex(vPos))
             return AbortNode(state, "Failed to write transaction index");
 
+    if (fSidechainIndex) {
+        // Collect sidechain objects
+        std::vector<std::pair<uint256, const SidechainObj *> > vSidechainObjects;
+        for (const CTransactionRef &tx : block.vtx) {
+            for (const CTxOut& txout : tx->vout) {
+                const CScript& scriptPubKey = txout.scriptPubKey;
+                size_t script_sz = scriptPubKey.size();
+                if ((script_sz < 2) || (scriptPubKey[script_sz - 1] != OP_SIDECHAIN))
+                    continue;
+
+                SidechainObj *obj = SidechainObjCtr(scriptPubKey);
+                if (!obj)
+                    continue;
+
+                obj->txid = tx->GetHash();
+                vSidechainObjects.push_back(std::make_pair(obj->GetHash(), obj));
+            }
+        }
+        // Write sidechain objects to db
+        if (vSidechainObjects.size()) {
+            bool ret = psidechaintree->WriteSidechainIndex(vSidechainObjects);
+            if (!ret)
+                return state.Error("Failed to write sidechain index!");
+
+            for (size_t i = 0; i < vSidechainObjects.size(); i++)
+                delete vSidechainObjects[i].second;
+        }
+    }
+
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
 
@@ -2644,6 +2675,9 @@ bool static FlushStateToDisk(CValidationState &state, FlushStateMode mode) {
             }
             if (!pblocktree->WriteBatchSync(vFiles, nLastBlockFile, vBlocks)) {
                 return AbortNode(state, "Files to write to block index database");
+            }
+            if (!psidechaintree->WriteBatchSync(vFiles, nLastBlockFile, vBlocks)) {
+                return AbortNode(state, "Files to write to block sidechain database");
             }
         }
         // Finally remove any pruned files
@@ -4076,6 +4110,10 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams)
 
     PruneBlockIndexCandidates();
 
+    // Check for sidechain index
+    psidechaintree->ReadFlag("sidechain", fSidechainIndex);
+    LogPrintf("LoadBlockIndexDB(): sidechain index %s\n", fSidechainIndex ? "enabled" : "disabled");
+
     LogPrintf("%s: hashBestChain=%s height=%d date=%s progress=%f\n", __func__,
         chainActive.Tip()->GetBlockHash().ToString(), chainActive.Height(),
         DateTimeStrFormat("%Y-%m-%d %H:%M:%S", chainActive.Tip()->GetBlockTime()),
@@ -4321,6 +4359,7 @@ bool InitBlockIndex(const CChainParams& chainparams)
     // Use the provided setting for -txindex in the new database
     fTxIndex = GetBoolArg("-txindex", DEFAULT_TXINDEX);
     pblocktree->WriteFlag("txindex", fTxIndex);
+    psidechaintree->WriteFlag("sidechain", fSidechainIndex);
     LogPrintf("Initializing databases...\n");
 
     // Only add the genesis block if not reindexing (in which case we reuse the one already on disk)

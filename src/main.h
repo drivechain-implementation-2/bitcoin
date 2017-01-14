@@ -14,6 +14,7 @@
 #include "chain.h"
 #include "coins.h"
 #include "net.h"
+#include "primitives/sidechain.h"
 #include "script/script_error.h"
 #include "sync.h"
 #include "validationinterface.h"
@@ -32,6 +33,7 @@
 
 class CBlockIndex;
 class CBlockTreeDB;
+class CSidechainTreeDB;
 class CBloomFilter;
 class CChainParams;
 class CInv;
@@ -516,6 +518,9 @@ extern CCoinsViewCache *pcoinsTip;
 
 /** Global variable that points to the active block tree (protected by cs_main) */
 extern CBlockTreeDB *pblocktree;
+
+/** Global variable that points to the active sidechain tree (protected by cs_main) */
+extern CSidechainTreeDB *psidechaintree;
 
 /**
  * Return the spend height, which is one more than the inputs.GetBestBlock().

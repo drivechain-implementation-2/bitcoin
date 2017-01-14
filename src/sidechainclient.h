@@ -5,7 +5,7 @@
 #ifndef SIDECHAINCLIENT_H
 #define SIDECHAINCLIENT_H
 
-#include "sidechaindb.h"
+#include "primitives/sidechain.h"
 #include "uint256.h"
 
 #include <boost/property_tree/json_parser.hpp>
@@ -17,12 +17,12 @@ class SidechainClient
 public:
     SidechainClient();
 
-    bool sendWT(uint256 wtjid, std::string hex);
+    bool BroadcastWTJoin(std::string hex);
 
-    std::vector<SidechainDeposit> getDeposits(uint8_t nSidechain);
+    std::vector<SidechainDeposit> UpdateDeposits(uint8_t nSidechain);
 
 private:
-    bool sendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree);
+    bool SendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree);
 };
 
 #endif // SIDECHAINCLIENT_H

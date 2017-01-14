@@ -24,7 +24,7 @@ SidechainClient::SidechainClient()
 
 }
 
-bool SidechainClient::sendWT(uint256 wtjid, std::string hex)
+bool SidechainClient::BroadcastWTJoin(std::string hex)
 {
     // JSON for sending the WT^ to mainchain via HTTP-RPC
     std::string json;
@@ -38,10 +38,10 @@ bool SidechainClient::sendWT(uint256 wtjid, std::string hex)
 
     // TODO Read result, display to user
     boost::property_tree::ptree ptree;
-    return sendRequestToMainchain(json, ptree);
+    return SendRequestToMainchain(json, ptree);
 }
 
-std::vector<SidechainDeposit> SidechainClient::getDeposits(uint8_t nSidechain)
+std::vector<SidechainDeposit> SidechainClient::UpdateDeposits(uint8_t nSidechain)
 {
     // List of deposits in sidechain format for DB
     std::vector<SidechainDeposit> incoming;
@@ -57,7 +57,7 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint8_t nSidechain)
 
     // Try to request deposits from mainchain
     boost::property_tree::ptree ptree;
-    if (!sendRequestToMainchain(json, ptree))
+    if (!SendRequestToMainchain(json, ptree))
         return incoming; // TODO display error
 
     // Process deposits
@@ -133,11 +133,12 @@ std::vector<SidechainDeposit> SidechainClient::getDeposits(uint8_t nSidechain)
         if (depositValid)
             incoming.push_back(deposit);
     }
+
     // return valid deposits in sidechain format
     return incoming;
 }
 
-bool SidechainClient::sendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree)
+bool SidechainClient::SendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree)
 {
     try {
         // Setup BOOST ASIO for a synchronus call to mainchain

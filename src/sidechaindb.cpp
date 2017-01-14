@@ -17,13 +17,6 @@ SidechainDB::SidechainDB()
 {
 }
 
-bool SidechainDeposit::operator==(const SidechainDeposit& a) const
-{
-    return (a.nSidechain == nSidechain &&
-            a.keyID == keyID &&
-            a.dtx == dtx);
-}
-
 bool SidechainWT::operator==(const SidechainWT& a) const
 {
     return (a.nSidechain == nSidechain &&
@@ -36,23 +29,9 @@ std::vector<SidechainWT> SidechainDB::GetWTCache() const
     return vWTCache;
 }
 
-std::vector<SidechainDeposit> SidechainDB::GetDepositCache() const
-{
-    return vDepositCache;
-}
-
 std::vector<CTransaction> SidechainDB::GetWTJoinCache()
 {
     return vWTJoinCache;
-}
-
-bool SidechainDB::HaveDeposit(const SidechainDeposit& deposit) const
-{
-    for (const SidechainDeposit& d : vDepositCache) {
-        if (d == deposit)
-            return true;
-    }
-    return false;
 }
 
 bool SidechainDB::HaveWTJoin(const uint256& txid) const
@@ -79,26 +58,6 @@ std::string SidechainDB::ToString() const
     return ss.str();
 }
 
-std::vector<SidechainDeposit> SidechainDB::UpdateDepositCache()
-{
-    // Request deposits from mainchain
-    SidechainClient client;
-    std::vector<SidechainDeposit> vDepositNew;
-    vDepositNew = client.getDeposits(THIS_SIDECHAIN.nSidechain);
-
-    // Find new unknown deposits
-    std::vector<SidechainDeposit> vDepositNewUniq;
-    for (const SidechainDeposit& d : vDepositNew) {
-        if (HaveDeposit(d))
-            continue;
-
-        // Add new deposits to the cache and return vector
-        vDepositCache.push_back(d);
-        vDepositNewUniq.push_back(d);
-    }
-    return vDepositNewUniq;
-}
-
 bool SidechainDB::AddSidechainWTJoin(const CTransaction& tx)
 {
     // Check the WT^
@@ -110,7 +69,7 @@ bool SidechainDB::AddSidechainWTJoin(const CTransaction& tx)
         return false;
     // Try to send WT^ to the mainchain
     SidechainClient client;
-    if (!client.sendWT(tx.GetHash(), EncodeHexTx(tx)))
+    if (!client.BroadcastWTJoin(EncodeHexTx(tx)))
         return false;
 
     // Cache WT^
@@ -169,15 +128,6 @@ std::string SidechainVerification::ToString() const
     ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
     ss << "nBlocksLeft=" << nBlocksLeft << std::endl;
     ss << "nWorkScore=" << nWorkScore << std::endl;
-    return ss.str();
-}
-
-std::string SidechainDeposit::ToString() const
-{
-    std::stringstream ss;
-    ss << "nSidechain=" << (unsigned int)nSidechain << std::endl;
-    ss << "dtx=" << dtx.ToString() << std::endl;
-    ss << "keyID=" << keyID.ToString() << std::endl;
     return ss.str();
 }
 

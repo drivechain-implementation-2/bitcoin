@@ -17,10 +17,13 @@
 #include "net.h"
 #include "policy/policy.h"
 #include "pow.h"
+#include "primitives/sidechain.h"
 #include "primitives/transaction.h"
 #include "script/standard.h"
+#include "sidechainclient.h"
 #include "sidechaindb.h"
 #include "timedata.h"
+#include "txdb.h"
 #include "txmempool.h"
 #include "util.h"
 #include "utilmoneystr.h"
@@ -625,16 +628,26 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 /** Create a payout transaction for any new deposits */
 CTransaction CreateDepositTx()
 {
-    // Get a list of unseen deposit(s)
-    std::vector<SidechainDeposit> vDepositNewUniq = scdb.UpdateDepositCache();
-    if (!vDepositNewUniq.size())
+    SidechainClient client;
+
+    // Find new deposits
+    std::vector<SidechainDeposit> vDeposit = client.UpdateDeposits(THIS_SIDECHAIN.nSidechain);
+    std::vector<SidechainDeposit> vDepositUniq;
+    for (const SidechainDeposit& d: vDeposit) {
+        SidechainDeposit temp;
+        if (psidechaintree->GetDeposit(d.GetHash(), temp))
+            continue;
+        vDepositUniq.push_back(d);
+    }
+
+    if (!vDepositUniq.size())
         return CTransaction();
 
     // Create deposit payout(s) transaction
     CMutableTransaction mtx;
-    for (size_t i = 0; i < vDepositNewUniq.size(); i++) {
-        for (size_t j = 0; j < vDepositNewUniq[i].dtx.vout.size(); j++) {
-            const CScript& scriptPubKey = vDepositNewUniq[i].dtx.vout[j].scriptPubKey;
+    for (size_t i = 0; i < vDepositUniq.size(); i++) {
+        for (size_t j = 0; j < vDepositUniq[i].dtx.vout.size(); j++) {
+            const CScript& scriptPubKey = vDepositUniq[i].dtx.vout[j].scriptPubKey;
 
             // Check that this is a workscore script
             if (!scriptPubKey.size() || scriptPubKey.back() != OP_NOP4)
@@ -644,13 +657,14 @@ CTransaction CreateDepositTx()
             if (nSidechain != THIS_SIDECHAIN.nSidechain)
                 continue;
             // Check that keyID is not null
-            if (vDepositNewUniq[i].keyID.IsNull())
+            if (vDepositUniq[i].keyID.IsNull())
                 continue;
 
             // Pay keyID the deposit
             CScript script;
-            script << OP_DUP << OP_HASH160 << ToByteVector(vDepositNewUniq[i].keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
-            mtx.vout.push_back(CTxOut(vDepositNewUniq[i].dtx.vout[j].nValue, script));
+            script << OP_DUP << OP_HASH160 << ToByteVector(vDepositUniq[i].keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
+            mtx.vout.push_back(CTxOut(vDepositUniq[i].dtx.vout[j].nValue, script));
+            mtx.vout.push_back(CTxOut(CENT, vDepositUniq[i].GetScript()));
         }
     }
     return mtx;
@@ -700,7 +714,7 @@ CTransaction CreateWTJoinTx(uint32_t nHeight)
 
     // TODO seperate FundWTJoinTx function
     // Add inputs to cover WT^
-    std::vector<SidechainDeposit> vDeposit = scdb.GetDepositCache();
+    std::vector<SidechainDeposit> vDeposit = psidechaintree->GetDeposits(THIS_SIDECHAIN.nSidechain);
     for (size_t i = 0; i < vDeposit.size(); i++) {
         if (joinAmount <= 0)
             break;
