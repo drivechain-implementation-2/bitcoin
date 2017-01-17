@@ -480,7 +480,7 @@ UniValue receivesidechainwt(const JSONRPCRequest& request)
         throw runtime_error("Invalid WT^ hex");
 
     // Add WT^ to sidechain DB and start verification
-    if (!scdb.AddSidechainWTJoin(nSidechain, wt))
+    if (!scdb.AddWTJoin(nSidechain, wt))
         throw runtime_error("WT^ rejected");
 
     // Return WT^ hash to verify it has been received
@@ -508,7 +508,7 @@ UniValue listsidechaindeposits(const JSONRPCRequest& request)
         throw runtime_error("Invalid sidechain number");
 
     // Get deposits from sidechain DB
-    std::vector<SidechainDeposit> vDeposit = scdb.GetSidechainDeposits(nSidechain);
+    std::vector<SidechainDeposit> vDeposit = scdb.GetDeposits(nSidechain);
     UniValue ret(UniValue::VOBJ);
     for (size_t i = 0; i < vDeposit.size(); i++) {
         const SidechainDeposit& deposit = vDeposit[i];

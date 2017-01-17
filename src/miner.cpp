@@ -383,7 +383,7 @@ void BlockAssembler::UpdatePackagesForAdded(const CTxMemPool::setEntries& alread
 
 CTransaction BlockAssembler::GetSidechainWTJoin(const uint8_t nSidechain)
 {
-    return scdb.GetWTJoin(nSidechain);
+    return scdb.GetWTJoinTx(nSidechain);
 }
 
 CTransaction BlockAssembler::GetSidechainStateTx()

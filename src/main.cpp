@@ -2506,13 +2506,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             // Check for new sidechain deposits
             if (!fJustCheck && tx.IsSidechainDeposit())
-                scdb.AddSidechainDeposit(tx); 
+                scdb.AddDeposit(tx);
         } else {
             // Check for new sidechain state update scripts
-            if (!fJustCheck) {
-                for (size_t i = 0; i < tx.vout.size(); i++)
-                    scdb.Update(tx.vout[i].scriptPubKey);
-            }
+            if (!fJustCheck)
+                scdb.Update(tx);
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
