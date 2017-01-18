@@ -86,7 +86,7 @@ class SidechainDB
         bool CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const;
 
         /** Return verified WT^ for nSidechain if one exists */
-        CTransaction GetWTJoinTx(uint8_t nSidechain) const;
+        CTransaction GetWTJoinTx(uint8_t nSidechain, int nHeight) const;
 
         /** Return true if the full WT^ CTransaction is cached */
         bool HaveWTJoinCached(uint256 wtxid) const;
@@ -98,7 +98,7 @@ class SidechainDB
         std::vector<SidechainDeposit> GetDeposits(uint8_t nSidechain) const;
 
         /** Create a script with OP_RETURN data representing the DB state */
-        CScript CreateStateScript() const;
+        CScript CreateStateScript(int nHeight) const;
 
         /** Print SCDB */
         std::string ToString() const;
@@ -125,6 +125,9 @@ class SidechainDB
 
         /** Get the latest scores for nSidechain's WT^(s) */
         std::vector<SidechainVerification> GetLastVerifications(uint8_t nSidechain) const;
+
+        /** Return height of the end of the previous / begining of this tau */
+        int GetLastTauHeight(const Sidechain &sidechain, int nHeight) const;
 };
 
 #endif // BITCOIN_SIDECHAINDB_H

@@ -186,7 +186,7 @@ bool SidechainDB::CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const
         if (v.wtxid != wtxid)
             continue;
 
-        // TODO this hould be in Update()
+        // TODO this should be in Update()
         if (std::abs(v.nWorkScore - nWorkScore) > 1)
             continue;
         nWorkScore = v.nWorkScore;
@@ -198,11 +198,17 @@ bool SidechainDB::CheckWorkScore(uint8_t nSidechain, uint256 wtxid) const
         return false;
 }
 
-CTransaction SidechainDB::GetWTJoinTx(uint8_t nSidechain) const
+CTransaction SidechainDB::GetWTJoinTx(uint8_t nSidechain, int nHeight) const
 {
     if (!HasState())
         return CTransaction();
     if (!SidechainNumberValid(nSidechain))
+        return CTransaction();
+
+    const Sidechain& sidechain = ValidSidechains[nSidechain];
+
+    uint16_t nTau = (sidechain.nWaitPeriod + sidechain.nVerificationPeriod);
+    if (nHeight % nTau != 0)
         return CTransaction();
 
     uint256 hashBest = uint256();
@@ -219,7 +225,7 @@ CTransaction SidechainDB::GetWTJoinTx(uint8_t nSidechain) const
         return CTransaction();
 
     // Is the WT^ verified?
-    if (scoreBest < ValidSidechains[nSidechain].nMinWorkScore)
+    if (scoreBest < sidechain.nMinWorkScore)
         return CTransaction();
 
     // Return the full transaction from WT^ cache if it exists
@@ -258,7 +264,7 @@ std::vector<SidechainDeposit> SidechainDB::GetDeposits(uint8_t nSidechain) const
     return vSidechainDeposit;
 }
 
-CScript SidechainDB::CreateStateScript() const
+CScript SidechainDB::CreateStateScript(int nHeight) const
 {
     /*
      * TODO use merged mining to decide what the new state is.
@@ -288,18 +294,26 @@ CScript SidechainDB::CreateStateScript() const
         }
 
         for (size_t y = 0; y < vScores[x].size(); y++) {
+            const Sidechain& s = ValidSidechains[x];
             const SidechainVerification& v = vScores[x][y];
-            if (v.wtxid == mostVerified.wtxid) {
-                script << SCOP_VERIFY;
+
+            int nTauLast = GetLastTauHeight(s, nHeight);
+            if (nHeight - nTauLast >= s.nWaitPeriod) {
+                // Update state during verification period
+                if (v.wtxid == mostVerified.wtxid)
+                    script << SCOP_VERIFY;
+                else
+                    script << SCOP_REJECT;
             } else {
-                script << SCOP_REJECT;
+                // Ignore state during waiting period
+                script << SCOP_IGNORE;
             }
-            // Delimit WT^(s)
+
+            // Delimit WT^
             if (y != vScores[x].size() - 1)
                 script << SCOP_WT_DELIM;
         }
-
-        // Delimit sidechains
+        // Delimit sidechain
         if (x != vScores.size() - 1)
             script << SCOP_SC_DELIM;
     }
@@ -409,6 +423,17 @@ std::vector<SidechainVerification> SidechainDB::GetLastVerifications(uint8_t nSi
             vLastVerification[i] = it->second;
     }
     return vLastVerification;
+}
+
+int SidechainDB::GetLastTauHeight(const Sidechain& sidechain, int nHeight) const
+{
+    uint16_t nTau = (sidechain.nWaitPeriod + sidechain.nVerificationPeriod);
+    for (;;) {
+        if (nHeight % nTau == 0) break;
+        if (nHeight == 0) break;
+        nHeight--;
+    }
+    return nHeight;
 }
 
 bool SidechainNumberValid(uint8_t nSidechain)

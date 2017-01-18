@@ -2450,7 +2450,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         nLockTimeFlags |= LOCKTIME_VERIFY_SEQUENCE;
     }
 
-    // TODO replace
+    // TODO replace with height check
     // Enable WORKSCORE rules right now
     if (true) {
         flags |= SCRIPT_VERIFY_CHECKWORKSCORE;
@@ -2504,7 +2504,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
 
-            // Check for new sidechain deposits
+            // Check for unknown (to this node) sidechain deposits
             if (!fJustCheck && tx.IsSidechainDeposit())
                 scdb.AddDeposit(tx);
         } else {

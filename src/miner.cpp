@@ -184,13 +184,13 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     // Add WT^(s) which have been validated
     for (const Sidechain& s : ValidSidechains) {
-        CTransaction wtx = GetSidechainWTJoin(s.nSidechain);
+        CTransaction wtx = CreateSidechainWTJoinTx(s.nSidechain);
         if (wtx.vout.size() && wtx.vin.size())
             pblock->vtx.push_back(MakeTransactionRef(std::move(wtx)));
     }
 
     // Add SidechainDB state
-    CTransaction stateTx = GetSidechainStateTx();
+    CTransaction stateTx = CreateSidechainStateTx();
     for (const CTxOut& out : stateTx.vout) {
         coinbaseTx.vout.push_back(out);
         nSideFees += out.nValue;
@@ -381,16 +381,16 @@ void BlockAssembler::UpdatePackagesForAdded(const CTxMemPool::setEntries& alread
     }
 }
 
-CTransaction BlockAssembler::GetSidechainWTJoin(const uint8_t nSidechain)
+CTransaction BlockAssembler::CreateSidechainWTJoinTx(const uint8_t nSidechain)
 {
-    return scdb.GetWTJoinTx(nSidechain);
+    return scdb.GetWTJoinTx(nSidechain, nHeight);
 }
 
-CTransaction BlockAssembler::GetSidechainStateTx()
+CTransaction BlockAssembler::CreateSidechainStateTx()
 {
     CMutableTransaction mtx;
 
-    CScript script = scdb.CreateStateScript();
+    CScript script = scdb.CreateStateScript(nHeight);
     if (!script.empty())
         mtx.vout.push_back(CTxOut(CENT, script));
 
