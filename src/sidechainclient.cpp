@@ -24,7 +24,7 @@ SidechainClient::SidechainClient()
 
 }
 
-bool SidechainClient::BroadcastWTJoin(std::string hex)
+bool SidechainClient::BroadcastWTJoin(const std::string& hex)
 {
     // JSON for sending the WT^ to mainchain via HTTP-RPC
     std::string json;
@@ -138,7 +138,7 @@ std::vector<SidechainDeposit> SidechainClient::UpdateDeposits(uint8_t nSidechain
     return incoming;
 }
 
-bool SidechainClient::SendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree)
+bool SidechainClient::SendRequestToMainchain(const std::string& json, boost::property_tree::ptree &ptree)
 {
     try {
         // Setup BOOST ASIO for a synchronus call to mainchain

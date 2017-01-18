@@ -17,12 +17,12 @@ class SidechainClient
 public:
     SidechainClient();
 
-    bool BroadcastWTJoin(std::string hex);
+    bool BroadcastWTJoin(const std::string& hex);
 
     std::vector<SidechainDeposit> UpdateDeposits(uint8_t nSidechain);
 
 private:
-    bool SendRequestToMainchain(const std::string json, boost::property_tree::ptree &ptree);
+    bool SendRequestToMainchain(const std::string& json, boost::property_tree::ptree &ptree);
 };
 
 #endif // SIDECHAINCLIENT_H
